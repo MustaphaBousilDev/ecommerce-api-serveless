@@ -104,7 +104,7 @@ app.get("/health", (req, res) => {
 });
 
 app.post("/auth/register", async (req,res)=> {
-  const {email, password, name, phone} = req.body
+  const {email, password, name, phone, address} = req.body
   if (!email || !password || !name) {
     return res.status(400).json({
       error: 'Email, password and name are required'
@@ -117,7 +117,7 @@ app.post("/auth/register", async (req,res)=> {
   }
   try {
     const params = {
-      ClientId: USER_POOL_CLIENT_ID,
+      ClientId: "458t15teorb22evb8q2v1ihovg",
       Username: email, 
       Password: password,
       UserAttributes: [
@@ -136,6 +136,10 @@ app.post("/auth/register", async (req,res)=> {
         {
           Name: "family_name",
           Value: name.split(' ').slice(1).join(' ') || name.split(' ')[0]
+        },
+        {
+          Name: "address",  // Add this
+          Value: address || "Not provided"
         }
       ]
     }
@@ -170,7 +174,7 @@ app.post("/auth/register", async (req,res)=> {
       statusCode = 400;
     }
 
-    res.statusCode(statusCode).json({
+    res.status(statusCode).json({
       error: errorMessage
     })
   }
