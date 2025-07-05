@@ -8,6 +8,7 @@ const {
 const express = require("express");
 const serverless = require("serverless-http");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
+const { SignUpCommand, CognitoIdentityProviderClient } = require("@aws-sdk/client-cognito-identity-provider");
 
 // Environment Variables
 const USERS_TABLE = process.env.USERS_TABLE;
@@ -18,6 +19,11 @@ const AWS_REGION = process.env.AWS_REGION_NAME;
 // DynamoDB Client Setup
 const client = new DynamoDBClient();
 const docClient = DynamoDBDocumentClient.from(client);
+
+//Cognito Client Setup
+const cognitoClient = new CognitoIdentityProviderClient({
+  region: AWS_REGION,
+})
 
 // Cognito JWT Verifier Setup
 const verifier = CognitoJwtVerifier.create({
@@ -133,8 +139,41 @@ app.post("/auth/register", async (req,res)=> {
         }
       ]
     }
+    if(phone) {
+      params.UserAttributes.push({
+        Name: "phone_number",
+        Value: phone
+      })
+    }
+    const command = new SignUpCommand(params)
+    const result = await cognitoClient.send(command)
+    res.status(201).json({
+      message: "User registered successfully",
+      userId: result.UserSub,
+      email: email,
+      confirmationRequired: !result.UserConfirmed,
+      nextStep: result.UserConfirmed ? "login": "confirm_email"
+    })
   }
-  catch(error) {}
+  catch(error) {
+    console.error("Registration error: ", error)
+    let errorMessage = "Registration Failed"
+    let statusCode = 500
+    if (error.name == "UsernameExistsException") {
+      errorMessage = "User with this email already exists"
+      statusCode = 409
+    } else if (error.name=="InvalidPasswordException") {
+      errorMessage = "Password does not meet requirements"
+      statusCode = 400
+    } else if (error.name === "InvalidParameterException") {
+      errorMessage = "Invalid input parameters";
+      statusCode = 400;
+    }
+
+    res.statusCode(statusCode).json({
+      error: errorMessage
+    })
+  }
 })
 
 // Auth Status Route (Protected) - Test if token is valid
