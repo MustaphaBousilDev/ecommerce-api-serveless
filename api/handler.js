@@ -9,12 +9,14 @@ const express = require("express");
 const serverless = require("serverless-http");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
 const { SignUpCommand, CognitoIdentityProviderClient } = require("@aws-sdk/client-cognito-identity-provider");
-
+const AWSXRay = require('aws-xray-sdk-core');
 // Environment Variables
 const USERS_TABLE = process.env.USERS_TABLE;
 const USER_POOL_ID = process.env.USER_POOL_ID;
 const USER_POOL_CLIENT_ID = process.env.USER_POOL_CLIENT_ID;
 const AWS_REGION = process.env.AWS_REGION_NAME;
+
+const AWS = AWSXRay.captureAWS(require('aws-sdk'));
 
 // DynamoDB Client Setup
 const client = new DynamoDBClient();

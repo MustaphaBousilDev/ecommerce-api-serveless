@@ -38,7 +38,7 @@ const logger = winston.createLogger({
     exitOnError: false,
 })
 
-const loggerHelper = {
+const loggerHelpers = {
     logRequest: (req, requestId) => {
         logger.info("Incoming Request", {
             requestId,
@@ -118,6 +118,8 @@ const loggerHelper = {
         });
     }
 }
+
+
 module.exports = {
   logger,
   ...loggerHelpers

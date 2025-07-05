@@ -14,9 +14,22 @@ provider:
   name: aws
   runtime: nodejs20.x
   region: us-east-1
+  stage: ${opt:stage, 'dev'}
+
+  # Enable X-Ray Tracing
+  tracing:
+    lambda: true # Enable tracing for lambda functions 
+    apiGateway: true # Enable tracing for API Gateway
+
+  #CloudWAtch Logs Configuration 
+  logs:
+    httpApi: true # Enable API Gateway logs
+
+  
   iam:
     role:
       statements:
+        # DynamoDB Permessions
         - Effect: Allow
           Action:
             - dynamodb:Query
@@ -27,18 +40,40 @@ provider:
             - dynamodb:DeleteItem
           Resource:
             - Fn::GetAtt: [UsersTable, Arn]
+        # X-Ray Permission 
+        - Effect: Allow 
+          Action:
+            - xray:PutTraceSegments  #Send tracing data to X-Ray
+            - xray:PutTelemetryRecords  # Send performance metrics
+          Resource: "*"
+        # CloudWatch Permissions
+        - Effect: Allow 
+          Action:
+            - logs:CreateLogGroup # Create log groups
+            - logs:CreateLogStream # Create log streams
+            - logs:PutLogEvents # Write log entries
+          Resource: "*"
   environment:
     USERS_TABLE: ${param:tableName}
     # Cognito Config 
     USER_POOL_ID: ${env:USER_POOL_ID}
     USER_POOL_CLIENT_ID: ${env:USER_POOL_CLIENT_ID}
     AWS_REGION_NAME: us-east-1
+    # Tracing 
+    #_X_AMZN_TRACE_ID: ${env:_X_AMZN_TRACE_ID, ""}
+    AWS_XRAY_TRACING_NAME: ${self:service}-${self:provider.stage}
 
 functions:
   api:
     handler: handler.handler
     events:
       - httpApi: "*"
+    # Function-level tracing configuration
+    tracing: Active              # Enable X-Ray tracing for this function
+    timeout: 30                  # Function timeout
+    memorySize: 512             # Memory allocation
+    # CloudWatch log retention
+    logRetentionInDays: 14
 
 resources:
   Resources:
@@ -53,6 +88,32 @@ resources:
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
         TableName: ${param:tableName}
+        # Enable DynamoDB contributor insights
+        ContributorInsightsSpecification:
+          Enabled: true
+
+    # CloudWatch Log Group for API functions
+    ApiLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /aws/lambda/${self:service}-${self:provider.stage}-api
+        RetentionInDays: 14
 plugins:
   - serverless-offline
   - serverless-dotenv-plugin
+  - serverless-plugin-tracing  # Add this for X-Ray tracing
+
+# Custom configuration
+custom:
+  # Serverless Offline Configuration
+  serverless-offline:
+    httpPort: 3000
+    host: 0.0.0.0
+    stage: ${self:provider.stage}
+  
+  # Environment-specific settings
+  stages:
+    dev:
+      logLevel: debug
+    prod:
+      logLevel: warn

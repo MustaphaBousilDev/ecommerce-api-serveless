@@ -7,6 +7,7 @@
     "@aws-sdk/client-dynamodb": "^3.585.0",
     "@aws-sdk/lib-dynamodb": "^3.585.0",
     "aws-jwt-verify": "^5.1.0",
+    "aws-xray-sdk-core": "^3.10.3",
     "express": "^4.19.2",
     "serverless-http": "^3.2.0",
     "uuid": "^11.1.0",
@@ -14,6 +15,7 @@
   },
   "devDependencies": {
     "serverless-dotenv-plugin": "^6.0.0",
-    "serverless-offline": "^14.4.0"
+    "serverless-offline": "^14.4.0",
+    "serverless-plugin-tracing": "^2.0.0"
   }
 }
