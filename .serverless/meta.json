@@ -1,0 +1,15 @@
+{
+  "unknown": {
+    "versionFramework": "4.17.1",
+    "command": [],
+    "options": {
+      "template": "aws-nodejs",
+      "name": "api"
+    },
+    "serviceProviderAwsCfStackId": null,
+    "serviceProviderAwsCfStackCreated": null,
+    "serviceProviderAwsCfStackUpdated": null,
+    "serviceProviderAwsCfStackStatus": null,
+    "serviceProviderAwsCfStackOutputs": null
+  }
+}
