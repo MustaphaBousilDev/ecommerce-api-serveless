@@ -73,7 +73,7 @@ functions:
     timeout: 30                  # Function timeout
     memorySize: 512             # Memory allocation
     # CloudWatch log retention
-    logRetentionInDays: 14
+    logRetentionInDays: 14 # Automatic log cleanup
 
 resources:
   Resources:
