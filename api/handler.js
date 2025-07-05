@@ -64,10 +64,22 @@ app.get("/", (req, res) => {
     message: "E-commerce API is running",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
-    endpoints: {
-      public: ["/", "/health"],
-      protected: ["/auth/status", "/profile", "/users", "/protected"]
-    }
+    public: [
+        "GET /",
+        "GET /health", 
+        "POST /auth/register",
+        "POST /auth/confirm", 
+        "POST /auth/login",
+        "POST /auth/forgot-password",
+        "POST /auth/reset-password"
+      ],
+    protected: [
+        "GET /auth/status", 
+        "GET /profile", 
+        "POST /users",
+        "GET /users/:userId", 
+        "GET /protected"
+      ]
   });
 });
 
@@ -84,6 +96,46 @@ app.get("/health", (req, res) => {
     }
   });
 });
+
+app.post("/auth/register", async (req,res)=> {
+  const {email, password, name, phone} = req.body
+  if (!email || !password || !name) {
+    return res.status(400).json({
+      error: 'Email, password and name are required'
+    })
+  }
+  if (password.length < 8) {
+    return res.status(400).json({
+      error: 'Password must be at least 8 characters long'
+    })
+  }
+  try {
+    const params = {
+      ClientId: USER_POOL_CLIENT_ID,
+      Username: email, 
+      Password: password,
+      UserAttributes: [
+        {
+          Name: 'email',
+          Value: email,
+        },
+        {
+          Name: "name",
+          Value: name
+        },
+        {
+          Name: "given_name",
+          Value: name.split(' ')[0]
+        },
+        {
+          Name: "family_name",
+          Value: name.split(' ').slice(1).join(' ') || name.split(' ')[0]
+        }
+      ]
+    }
+  }
+  catch(error) {}
+})
 
 // Auth Status Route (Protected) - Test if token is valid
 app.get("/auth/status", authenticateToken, (req, res) => {
