@@ -117,7 +117,7 @@ app.post("/auth/register", async (req,res)=> {
   }
   try {
     const params = {
-      ClientId: "458t15teorb22evb8q2v1ihovg",
+      ClientId: USER_POOL_CLIENT_ID,
       Username: email, 
       Password: password,
       UserAttributes: [
