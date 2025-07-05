@@ -30,6 +30,7 @@ const verifier = CognitoJwtVerifier.create({
   userPoolId: USER_POOL_ID,
   tokenUse: "access",
   clientId: USER_POOL_CLIENT_ID,
+  
 });
 
 // JWT Authentication Middleware
