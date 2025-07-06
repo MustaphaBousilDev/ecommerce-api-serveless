@@ -5,7 +5,7 @@ const {
   PutCommand,
 } = require("@aws-sdk/lib-dynamodb");
 const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand, ResendConfirmationCodeCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand, InitiateAuthCommand } = require("@aws-sdk/client-cognito-identity-provider");
-
+const authRoutes = require('./src/routers/authRouter');
 const express = require("express");
 const serverless = require("serverless-http");
 const { CognitoJwtVerifier } = require("aws-jwt-verify");
@@ -22,8 +22,8 @@ const {
   logError, 
   logPerformance, 
   logSecurity 
-} = require('./utils/logger');
-const { requestLoggin } = require("./middlewares/logger");
+} = require('./src/utils/logger');
+const { requestLoggin } = require("./src/middlewares/logger");
 
 // X-Ray Configuration with error handling
 let AWSXRay;
@@ -241,7 +241,13 @@ const app = express();
 // Apply middleware in correct order
 app.use(xrayMiddleware);          // X-Ray must be first
 app.use(express.json());          
-app.use(requestLoggin);           // Your custom request logging middleware
+app.use(requestLoggin);   
+        // Your custom request logging middleware
+
+
+//Routers
+app.use('/auth', authRoutes);
+
 
 // Log application startup
 logger.info('E-commerce API Starting', {
@@ -330,156 +336,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Registration Route with conditional X-Ray tracing and Winston logging
-app.post("/auth/register", async (req, res) => {
-  const subsegment = addSubsegment('user-registration');
-  
-  const {email, password, name, phone, address} = req.body;
-  const requestId = req.requestId;
-  
-  // Log registration attempt
-  logBusiness('registration_attempt', null, requestId, { email });
-  
-  try {
-    // Validation
-    if (!email || !password || !name) {
-      logSecurity('registration_invalid_input', null, requestId, { 
-        missing: { email: !email, password: !password, name: !name }
-      });
-      if (subsegment) {
-        subsegment.addAnnotation('result', 'validation_failed');
-      }
-      closeSubsegment(subsegment);
-      return res.status(400).json({
-        error: 'Email, password and name are required'
-      });
-    }
-    
-    if (password.length < 8) {
-      logSecurity('weak_password_attempt', null, requestId, { email });
-      if (subsegment) {
-        subsegment.addAnnotation('result', 'weak_password');
-      }
-      closeSubsegment(subsegment);
-      return res.status(400).json({
-        error: 'Password must be at least 8 characters long'
-      });
-    }
-    
-    const startTime = Date.now();
-    
-    const params = {
-      ClientId: USER_POOL_CLIENT_ID,
-      Username: email, 
-      Password: password,
-      UserAttributes: [
-        {
-          Name: 'email',
-          Value: email,
-        },
-        {
-          Name: "name",
-          Value: name
-        },
-        {
-          Name: "given_name",
-          Value: name.split(' ')[0]
-        },
-        {
-          Name: "family_name",
-          Value: name.split(' ').slice(1).join(' ') || name.split(' ')[0]
-        },
-        {
-          Name: "address",
-          Value: address || "Not provided"
-        }
-      ]
-    };
-    
-    if(phone) {
-      params.UserAttributes.push({
-        Name: "phone_number",
-        Value: phone
-      });
-    }
-    
-    const command = new SignUpCommand(params);
-    const result = await cognitoClient.send(command);
-    
-    const duration = Date.now() - startTime;
-    
-    // Add X-Ray annotations if available
-    if (subsegment) {
-      subsegment.addAnnotation('result', 'success');
-      subsegment.addAnnotation('user_id', result.UserSub);
-      subsegment.addMetadata('registration', {
-        email,
-        confirmationRequired: !result.UserConfirmed,
-        duration
-      });
-    }
-    
-    // Log successful registration using Winston logger
-    logAuth('user_registered', result.UserSub, email, requestId, true);
-    logBusiness('registration_success', result.UserSub, requestId, {
-      email,
-      confirmationRequired: !result.UserConfirmed
-    });
-    logPerformance('cognito_signup', duration, requestId);
-    
-    closeSubsegment(subsegment);
-    
-    res.status(201).json({
-      message: "User registered successfully",
-      userId: result.UserSub,
-      email: email,
-      confirmationRequired: !result.UserConfirmed,
-      nextStep: result.UserConfirmed ? "login": "confirm_email",
-      requestId
-    });
-    
-  } catch(error) {
-    // Add error to X-Ray if available
-    if (subsegment) {
-      subsegment.addAnnotation('result', 'error');
-      try {
-        subsegment.addError(error);
-      } catch (e) {
-        // Ignore X-Ray errors
-      }
-    }
-    
-    // Log error using Winston logger
-    logError(error, requestId, null, { 
-      operation: 'user_registration', 
-      email 
-    });
-    
-    let errorMessage = "Registration Failed";
-    let statusCode = 500;
-    
-    if (error.name == "UsernameExistsException") {
-      errorMessage = "User with this email already exists";
-      statusCode = 409;
-      logSecurity('duplicate_registration_attempt', null, requestId, { email });
-    } else if (error.name=="InvalidPasswordException") {
-      errorMessage = "Password does not meet requirements";
-      statusCode = 400;
-      logSecurity('invalid_password_policy', null, requestId, { email });
-    } else if (error.name === "InvalidParameterException") {
-      errorMessage = "Invalid input parameters";
-      statusCode = 400;
-    }
 
-    logAuth('registration_failed', null, email, requestId, false, error);
-    closeSubsegment(subsegment);
-
-    res.status(statusCode).json({
-      error: errorMessage,
-      requestId
-    });
-  }
-});
 app.post("/auth/confirms", async (req, res) => {
   console.log('Confirmation endpoint hit');
   
