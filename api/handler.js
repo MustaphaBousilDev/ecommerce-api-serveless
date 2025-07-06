@@ -4,7 +4,7 @@ const {
   GetCommand,
   PutCommand,
 } = require("@aws-sdk/lib-dynamodb");
-const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand, ResendConfirmationCodeCommand, ForgotPasswordCommand } = require("@aws-sdk/client-cognito-identity-provider");
+const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand, ResendConfirmationCodeCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand } = require("@aws-sdk/client-cognito-identity-provider");
 
 const express = require("express");
 const serverless = require("serverless-http");
@@ -953,6 +953,86 @@ app.post('/auth/forgot-password', async (req,res) => {
       requestedId
     });
   } 
+})
+
+//reset password
+app.post('/auth/reset-password', async (req, res)=> {
+  const { email, confirmationCode, newPassword } = req.body;
+  const requestId = req.requestId;
+  try {
+    if (!email || !confirmationCode || !newPassword) {
+      return res.status(400).json({
+        error: 'Email, confirmation code, and new password are required',
+        requestId
+      });
+    }
+    if (newPassword.length < 8) {
+      logSecurity('reset_password_weak_password', null, requestId, { email });
+      return res.status(400).json({
+        error: 'New password must be at least 8 characters long',
+        requestId
+      });
+    }
+    const startTime = Date.now();
+    
+    const params = {
+      ClientId: USER_POOL_CLIENT_ID,
+      Username: email.trim().toLowerCase(),
+      ConfirmationCode: confirmationCode.trim(),
+      Password: newPassword
+    };
+    const command = new ConfirmForgotPasswordCommand(params);
+    await cognitoClient.send(command);
+    const duration = Date.now() - startTime;
+    logBusiness('password_reset_completed', null, requestId, {
+      email: email.trim().toLowerCase()
+    });
+    res.status(200).json({
+      message: "Password reset successfully",
+      email: email.trim().toLowerCase(),
+      nextStep: "login",
+      instructions: "You can now login with your new password",
+      requestId,
+      duration: `${duration}ms`
+    });
+  } catch(error) {
+    let errorMessage = "Password reset failed";
+    let statusCode = 500;
+    
+    // Handle specific Cognito errors
+    if (error.name === "CodeMismatchException") {
+      errorMessage = "Invalid confirmation code";
+      statusCode = 400;
+      logSecurity('reset_password_invalid_code', null, requestId, { email });
+    } else if (error.name === "ExpiredCodeException") {
+      errorMessage = "Confirmation code has expired. Please request a new one";
+      statusCode = 400;
+      logSecurity('reset_password_expired_code', null, requestId, { email });
+    } else if (error.name === "UserNotFoundException") {
+      errorMessage = "User not found";
+      statusCode = 404;
+      logSecurity('reset_password_user_not_found', null, requestId, { email });
+    } else if (error.name === "InvalidPasswordException") {
+      errorMessage = "New password does not meet requirements";
+      statusCode = 400;
+      logSecurity('reset_password_invalid_password_policy', null, requestId, { email });
+    } else if (error.name === "LimitExceededException") {
+      errorMessage = "Too many attempts. Please try again later";
+      statusCode = 429;
+      logSecurity('reset_password_rate_limit', null, requestId, { email });
+    } else if (error.name === "NotAuthorizedException") {
+      errorMessage = "Invalid or expired confirmation code";
+      statusCode = 400;
+    } else if (error.name === "InvalidParameterException") {
+      errorMessage = "Invalid input parameters";
+      statusCode = 400;
+    }
+    res.status(statusCode).json({
+      error: errorMessage,
+      errorType: error.name,
+      requestId
+    });
+  }
 })
 
 
