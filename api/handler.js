@@ -4,7 +4,7 @@ const {
   GetCommand,
   PutCommand,
 } = require("@aws-sdk/lib-dynamodb");
-const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand, ResendConfirmationCodeCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand } = require("@aws-sdk/client-cognito-identity-provider");
+const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand, ResendConfirmationCodeCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand, InitiateAuthCommand } = require("@aws-sdk/client-cognito-identity-provider");
 
 const express = require("express");
 const serverless = require("serverless-http");
@@ -625,7 +625,215 @@ app.post("/auth/resend_confirmation", async (req, res)=> {
     });
   }
 })
+app.post("/auth/login", async (req, res)=> {
+  const { email, password } = req.body;
+  const requestId = req.requestId;
 
+  try {
+    if (!email || !password) {
+      return res.status(400).json({
+        error: 'Email and password are required',
+        requestId
+      });
+    }
+    const startTime = Date.now();
+    let authParams = {
+      ClientId: USER_POOL_CLIENT_ID,
+      AuthFlow: 'USER_PASSWORD_AUTH',
+      AuthParameters: {
+        USERNAME: email,
+        PASSWORD: password
+      }
+    };
+    const APP_CLIENT_SECRET = process.env.USER_POOL_CLIENT_SECRET;
+    if (APP_CLIENT_SECRET) {
+      const crypto = require('crypto');
+      const secretHash = crypto
+        .createHmac('sha256', APP_CLIENT_SECRET)
+        .update(email + USER_POOL_CLIENT_ID)
+        .digest('base64');
+      
+      authParams.AuthParameters.SECRET_HASH = secretHash;
+    }
+    console.log('Attempting login for:', email);
+    const command = new InitiateAuthCommand(authParams);
+    const authResult = await cognitoClient.send(command);
+    const duration = Date.now() - startTime;
+    
+    console.log('Auth result:', authResult.ChallengeName || 'SUCCESS');
+    if (authResult.ChallengeName) {
+      // Handle challenges (MFA, password reset, etc.)
+      const challengeResponse = handleAuthChallenge(authResult, email, requestId);
+      
+      return res.status(200).json(challengeResponse);
+    }
+    const {
+      AccessToken,
+      IdToken,
+      RefreshToken,
+      TokenType = 'Bearer',
+      ExpiresIn = 3600
+    } = authResult.AuthenticationResult;
+    
+    // Decode ID token to get user info (basic decode, not verification)
+    const idTokenPayload = JSON.parse(Buffer.from(IdToken.split('.')[1], 'base64').toString());
+    res.status(200).json({
+      message: "Login successful",
+      user: {
+        userId: idTokenPayload.sub,
+        email: idTokenPayload.email,
+        name: idTokenPayload.name || idTokenPayload.given_name || 'User',
+        username: idTokenPayload.preferred_username || idTokenPayload.email,
+        emailVerified: idTokenPayload.email_verified
+      },
+      tokens: {
+        accessToken: AccessToken,
+        idToken: IdToken,
+        refreshToken: RefreshToken,
+        tokenType: TokenType,
+        expiresIn: ExpiresIn,
+        expiresAt: new Date(Date.now() + (ExpiresIn * 1000)).toISOString()
+      },
+      requestId,
+      duration: `${duration}ms`
+    });
+  } catch(error) {
+      let errorMessage = "Login failed";
+    let statusCode = 500;
+    let action = "try_again";
+    
+    // Handle specific Cognito errors
+    if (error.name === "NotAuthorizedException") {
+      errorMessage = "Invalid email or password";
+      statusCode = 401;
+      action = "check_credentials";
+      logSecurity('login_invalid_credentials', null, requestId, { email });
+      logAuth('login_failed', null, email, requestId, false, error);
+    } else if (error.name === "UserNotFoundException") {
+      errorMessage = "User not found";
+      statusCode = 404;
+      action = "register";
+      logSecurity('login_user_not_found', null, requestId, { email });
+    } else if (error.name === "UserNotConfirmedException") {
+      errorMessage = "Account not confirmed";
+      statusCode = 400;
+      action = "confirm_account";
+      logSecurity('login_unconfirmed_user', null, requestId, { email });
+      
+      // Try to resend confirmation code
+      try {
+        const { ResendConfirmationCodeCommand } = require("@aws-sdk/client-cognito-identity-provider");
+        const resendParams = {
+          ClientId: USER_POOL_CLIENT_ID,
+          Username: email.trim().toLowerCase()
+        };
+        
+        const resendCommand = new ResendConfirmationCodeCommand(resendParams);
+        const resendResult = await cognitoClient.send(resendCommand);
+        
+        closeSubsegment(subsegment);
+        return res.status(400).json({
+          error: errorMessage,
+          errorType: error.name,
+          action,
+          message: "Please confirm your account first. We've sent you a new confirmation code.",
+          deliveryDetails: resendResult.CodeDeliveryDetails,
+          nextStep: "Use POST /auth/confirm to confirm your account",
+          requestId
+        });
+      } catch (resendError) {
+        console.log('Failed to resend confirmation code:', resendError.message);
+      }
+    } else if (error.name === "TooManyRequestsException" || error.name === "LimitExceededException") {
+      errorMessage = "Too many login attempts. Please try again later";
+      statusCode = 429;
+      action = "wait_and_retry";
+      logSecurity('login_rate_limit', null, requestId, { email });
+    } else if (error.name === "InvalidParameterException") {
+      errorMessage = "Invalid input parameters";
+      statusCode = 400;
+      action = "check_input";
+    } else if (error.name === "PasswordResetRequiredException") {
+      errorMessage = "Password reset required";
+      statusCode = 400;
+      action = "reset_password";
+      logSecurity('login_password_reset_required', null, requestId, { email });
+    }
+    res.status(statusCode).json({
+      error: errorMessage,
+      errorType: error.name,
+      action,
+      requestId,
+      debug: {
+        message: error.message
+      }
+    });
+  }
+})
+function handleAuthChallenge(authResult, email, requestId) {
+  const challengeName = authResult.ChallengeName;
+  const session = authResult.Session;
+  
+  console.log('Handling challenge:', challengeName);
+  
+  switch (challengeName) {
+    case 'NEW_PASSWORD_REQUIRED':
+      logSecurity('login_new_password_required', null, requestId, { email });
+      return {
+        challenge: "NEW_PASSWORD_REQUIRED",
+        message: "New password required",
+        session: session,
+        requiredAttributes: authResult.ChallengeParameters?.requiredAttributes,
+        action: "set_new_password",
+        nextStep: "Use POST /auth/respond-to-challenge with new password",
+        requestId
+      };
+      
+    case 'MFA_SETUP':
+      logSecurity('login_mfa_setup_required', null, requestId, { email });
+      return {
+        challenge: "MFA_SETUP",
+        message: "MFA setup required",
+        session: session,
+        action: "setup_mfa",
+        nextStep: "Set up MFA authentication",
+        requestId
+      };
+      
+    case 'SMS_MFA':
+      logSecurity('login_sms_mfa_required', null, requestId, { email });
+      return {
+        challenge: "SMS_MFA",
+        message: "SMS verification required",
+        session: session,
+        action: "enter_sms_code",
+        nextStep: "Enter the SMS code sent to your phone",
+        requestId
+      };
+      
+    case 'SOFTWARE_TOKEN_MFA':
+      logSecurity('login_software_token_mfa_required', null, requestId, { email });
+      return {
+        challenge: "SOFTWARE_TOKEN_MFA",
+        message: "Software token verification required",
+        session: session,
+        action: "enter_token_code",
+        nextStep: "Enter code from your authenticator app",
+        requestId
+      };
+      
+    default:
+      logSecurity('login_unknown_challenge', null, requestId, { email, challengeName });
+      return {
+        challenge: challengeName,
+        message: "Additional authentication required",
+        session: session,
+        action: "contact_support",
+        nextStep: "Contact support for assistance",
+        requestId
+      };
+  }
+}
 
 // Auth Status Route (Protected)
 app.get("/auth/status", authenticateToken, (req, res) => {
@@ -1035,6 +1243,93 @@ app.post('/auth/reset-password', async (req, res)=> {
   }
 })
 
+//change password
+app.post("/auth/change-password",authenticateToken, async (req, res)=> {
+  const { currentPassword, newPassword } = req.body;
+  const requestId = req.requestId;
+  const userId = req.user.userId;
+  logBusiness('change_password_attempt', userId, requestId, { email: req.user.email });
+  try {
+     if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        error: 'Current password and new password are required',
+        requestId
+      });
+     }
+     if (newPassword.length < 8) {
+      logSecurity('change_password_weak_password', userId, requestId, { email: req.user.email });
+     
+     
+      return res.status(400).json({
+        error: 'New password must be at least 8 characters long',
+        requestId
+      });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        error: 'New password must be different from current password',
+        requestId
+      });
+    }
+    const startTime = Date.now();
+    const { ChangePasswordCommand } = require("@aws-sdk/client-cognito-identity-provider");
+    const authHeader = req.headers['authorization'];
+    const accessToken = authHeader && authHeader.split(' ')[1];
+    
+    const params = {
+      AccessToken: accessToken,
+      PreviousPassword: currentPassword,
+      ProposedPassword: newPassword
+    };
+
+    const command = new ChangePasswordCommand(params);
+    await cognitoClient.send(command);
+    
+    const duration = Date.now() - startTime;
+    res.status(200).json({
+      message: "Password changed successfully",
+      user: {
+        userId: req.user.userId,
+        email: req.user.email
+      },
+      requestId,
+      duration: `${duration}ms`
+    });
+  } catch(error) {
+    let errorMessage = "Password change failed";
+    let statusCode = 500;
+    
+    // Handle specific Cognito errors
+    if (error.name === "NotAuthorizedException") {
+      errorMessage = "Current password is incorrect";
+      statusCode = 400;
+      logSecurity('change_password_wrong_current_password', userId, requestId, { 
+        email: req.user.email 
+      });
+    } else if (error.name === "InvalidPasswordException") {
+      errorMessage = "New password does not meet requirements";
+      statusCode = 400;
+      logSecurity('change_password_invalid_password_policy', userId, requestId, { 
+        email: req.user.email 
+      });
+    } else if (error.name === "LimitExceededException") {
+      errorMessage = "Too many password change attempts. Please try again later";
+      statusCode = 429;
+      logSecurity('change_password_rate_limit', userId, requestId, { 
+        email: req.user.email 
+      });
+    } else if (error.name === "InvalidParameterException") {
+      errorMessage = "Invalid input parameters";
+      statusCode = 400;
+    }
+
+    res.status(statusCode).json({
+      error: errorMessage,
+      errorType: error.name,
+      requestId
+    });
+  }
+})
 
 
 // 404 Handler
