@@ -4,7 +4,7 @@ const {
   GetCommand,
   PutCommand,
 } = require("@aws-sdk/lib-dynamodb");
-const { SignUpCommand, CognitoIdentityProviderClient } = require("@aws-sdk/client-cognito-identity-provider");
+const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand } = require("@aws-sdk/client-cognito-identity-provider");
 
 const express = require("express");
 const serverless = require("serverless-http");
@@ -50,6 +50,13 @@ const USER_POOL_ID = process.env.USER_POOL_ID;
 const USER_POOL_CLIENT_ID = process.env.USER_POOL_CLIENT_ID;
 const AWS_REGION = process.env.AWS_REGION_NAME;
 
+console.log('Environment variables loaded:', {
+  USERS_TABLE: USERS_TABLE ? 'set' : 'missing',
+  USER_POOL_ID: USER_POOL_ID ? 'set' : 'missing',
+  USER_POOL_CLIENT_ID: USER_POOL_CLIENT_ID ? 'set' : 'missing',
+  AWS_REGION: AWS_REGION ? 'set' : 'missing'
+});
+
 // AWS SDK v3 Clients with conditional X-Ray tracing
 let client, cognitoClient;
 
@@ -65,7 +72,7 @@ if (isXRayAvailable) {
     region: AWS_REGION
   });
   cognitoClient = new CognitoIdentityProviderClient({
-    region: AWS_REGION,
+    region: 'us-east-1',
   });
 }
 
@@ -276,31 +283,51 @@ app.get("/", (req, res) => {
       ]
   });
 });
-
+app.post("/test-confirm", async (req, res) => {
+  try {
+    const { CognitoIdentityProviderClient, ConfirmSignUpCommand } = require("@aws-sdk/client-cognito-identity-provider");
+    
+    const cognitoClient = new CognitoIdentityProviderClient({
+      region: process.env.AWS_REGION_NAME || 'us-east-1'
+    });
+    
+    const { email, confirmationCode } = req.body;
+    
+    const params = {
+      ClientId: process.env.USER_POOL_CLIENT_ID,
+      Username: email,
+      ConfirmationCode: confirmationCode
+    };
+    
+    const command = new ConfirmSignUpCommand(params);
+    await cognitoClient.send(command);
+    
+    res.json({
+      message: "Email confirmed successfully",
+      nextStep: "login"
+    });
+    
+  } catch (error) {
+    console.error("Confirmation error:", error);
+    res.status(500).json({
+      error: error.message,
+      name: error.name
+    });
+  }
+});
 // Health Check Route (Public)
 app.get("/health", (req, res) => {
-  const segment = getSegment();
-  if (segment) {
-    segment.addAnnotation('endpoint', 'health_detailed');
-  }
-  
-  const healthStatus = {
+  console.log('Detailed health check request received');
+  res.json({ 
     status: "healthy",
     timestamp: new Date().toISOString(),
-    requestId: req.requestId,
-    tracing: isXRayAvailable ? 'enabled' : 'disabled',
     environment: {
       userPoolId: USER_POOL_ID ? "configured" : "missing",
       clientId: USER_POOL_CLIENT_ID ? "configured" : "missing",
       region: AWS_REGION,
       usersTable: USERS_TABLE
     }
-  };
-  
-  if (segment) {
-    segment.addMetadata('health', healthStatus);
-  }
-  res.json(healthStatus);
+  });
 });
 
 // Registration Route with conditional X-Ray tracing and Winston logging
@@ -450,6 +477,82 @@ app.post("/auth/register", async (req, res) => {
     res.status(statusCode).json({
       error: errorMessage,
       requestId
+    });
+  }
+});
+app.post("/auth/confirms", async (req, res) => {
+  console.log('Confirmation endpoint hit');
+  
+  try {
+    // 1. FIRST: Extract variables from request body
+    const { email, confirmationCode } = req.body;
+    console.log('Email:', email, 'Code:', confirmationCode);
+    
+    // 2. THEN: Validate them
+    if (!email || !confirmationCode) {
+      console.log('Validation failed - missing email or code');
+      return res.status(400).json({
+        error: 'Email and confirmation code are required'
+      });
+    }
+    
+    // 3. Import Cognito (same as working version)
+    const { CognitoIdentityProviderClient, ConfirmSignUpCommand } = require("@aws-sdk/client-cognito-identity-provider");
+    
+    const cognitoClient = new CognitoIdentityProviderClient({
+      region: process.env.AWS_REGION_NAME || 'us-east-1'
+    });
+    
+    console.log('Starting confirmation process...');
+    const startTime = Date.now();
+    
+    const params = {
+      ClientId: process.env.USER_POOL_CLIENT_ID,
+      Username: email,
+      ConfirmationCode: confirmationCode
+    };
+    
+    console.log('Sending confirmation command...');
+    const command = new ConfirmSignUpCommand(params);
+    await cognitoClient.send(command);
+    
+    const duration = Date.now() - startTime;
+    console.log(`Confirmation successful in ${duration}ms`);
+    
+    res.status(200).json({
+      message: 'Email confirmed successfully',
+      email: email,
+      nextStep: "login",
+      duration: `${duration}ms`
+    });
+    
+  } catch(error) {
+    console.error('Confirmation error:', error);
+    
+    let errorMessage = "Email confirmation failed";
+    let statusCode = 500;
+    
+    // Handle specific Cognito errors
+    if (error.name === "CodeMismatchException") {
+      errorMessage = "Invalid confirmation code";
+      statusCode = 400;
+    } else if (error.name === "ExpiredCodeException") {
+      errorMessage = "Confirmation code has expired";
+      statusCode = 400;
+    } else if (error.name === "UserNotFoundException") {
+      errorMessage = "User not found";
+      statusCode = 404;
+    } else if (error.name === "NotAuthorizedException") {
+      errorMessage = "User is already confirmed";
+      statusCode = 400;
+    } else if (error.name === "LimitExceededException") {
+      errorMessage = "Too many attempts. Please try again later";
+      statusCode = 429;
+    }
+    
+    res.status(statusCode).json({
+      error: errorMessage,
+      errorType: error.name
     });
   }
 });
