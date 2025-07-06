@@ -4,7 +4,7 @@ const {
   GetCommand,
   PutCommand,
 } = require("@aws-sdk/lib-dynamodb");
-const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand } = require("@aws-sdk/client-cognito-identity-provider");
+const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand, ResendConfirmationCodeCommand } = require("@aws-sdk/client-cognito-identity-provider");
 
 const express = require("express");
 const serverless = require("serverless-http");
@@ -556,6 +556,75 @@ app.post("/auth/confirms", async (req, res) => {
     });
   }
 });
+app.post("/auth/resend_confirmation", async (req, res)=> {
+  console.log('Resend confirmation endpoint hit');
+  
+  try {
+  const { email } = req.body 
+  const requestedId = req.requestId;
+  logBusiness('resend_confirmation_attempt', null, requestedId, { email });
+  if(!email){
+    logSecurity('resend_confirmation_invalid_input', null, requestedId, { 
+      missing: { email: !email }
+    });
+    
+    
+    return res.status(400).json({
+      error: 'Email is required'
+    });
+  }
+  const { CognitoIdentityProviderClient, ResendConfirmationCodeCommand } = require("@aws-sdk/client-cognito-identity-provider");
+  const cognitoClient = new CognitoIdentityProviderClient({
+      region: process.env.AWS_REGION_NAME || 'us-east-1'
+  });
+  console.log('Starting resend confirmation process...');
+  const startTime = Date.now();
+  const params = {
+      ClientId: process.env.USER_POOL_CLIENT_ID,
+      Username: email
+  };
+  console.log('Sending resend confirmation command...');
+  const command = new ResendConfirmationCodeCommand(params);
+  const result = await cognitoClient.send(command);
+  const duration  = Date.now() - startTime;
+  console.log(`Resend confirmation successful in ${duration}ms`);
+  res.status(200).json({
+      message: "Confirmation code sent successfully",
+      email: email,
+      deliveryDetails: {
+        destination: result.CodeDeliveryDetails?.Destination,
+        deliveryMedium: result.CodeDeliveryDetails?.DeliveryMedium
+      },
+      nextStep: "confirm_email",
+      duration: `${duration}ms`
+  });
+  } catch(error) {
+      console.error('Resend confirmation error:', error);
+    
+    let errorMessage = "Failed to resend confirmation code";
+    let statusCode = 500;
+    
+    // Handle specific Cognito errors
+    if (error.name === "UserNotFoundException") {
+      errorMessage = "User not found";
+      statusCode = 404;
+    } else if (error.name === "InvalidParameterException") {
+      errorMessage = "User is already confirmed";
+      statusCode = 400;
+    } else if (error.name === "LimitExceededException") {
+      errorMessage = "Too many resend attempts. Please try again later";
+      statusCode = 429;
+    } else if (error.name === "NotAuthorizedException") {
+      errorMessage = "User account is disabled or deleted";
+      statusCode = 403;
+    }
+    
+    res.status(statusCode).json({
+      error: errorMessage,
+      errorType: error.name
+    });
+  }
+})
 
 // Auth Status Route (Protected)
 app.get("/auth/status", authenticateToken, (req, res) => {
