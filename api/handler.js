@@ -4,7 +4,7 @@ const {
   GetCommand,
   PutCommand,
 } = require("@aws-sdk/lib-dynamodb");
-const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand, ResendConfirmationCodeCommand } = require("@aws-sdk/client-cognito-identity-provider");
+const { SignUpCommand, CognitoIdentityProviderClient, ConfirmSignUpCommand, ResendConfirmationCodeCommand, ForgotPasswordCommand } = require("@aws-sdk/client-cognito-identity-provider");
 
 const express = require("express");
 const serverless = require("serverless-http");
@@ -626,6 +626,7 @@ app.post("/auth/resend_confirmation", async (req, res)=> {
   }
 })
 
+
 // Auth Status Route (Protected)
 app.get("/auth/status", authenticateToken, (req, res) => {
   const segment = getSegment();
@@ -871,6 +872,90 @@ app.get("/protected", authenticateToken, (req, res) => {
     requestId: req.requestId
   });
 });
+
+//forgot password
+app.post('/auth/forgot-password', async (req,res) => {
+  const { email } = req.body
+  const requestedId = req.requestId;
+  logBusiness('forgot_password_attempt', null, requestedId, { email });
+  try {
+    if (!email || !email.trim()) {
+      logSecurity('forgot_password_invalid_input', null, requestedId, { 
+        missing: { email: !email }
+      });
+      
+      return res.status(400).json({
+        error: 'Email is required',
+        requestedId
+      });
+    }
+    const startTime = Date.now()
+    
+    const { CognitoIdentityProviderClient, ForgotPasswordCommand } = require("@aws-sdk/client-cognito-identity-provider");
+    const cognitoClient = new CognitoIdentityProviderClient({
+      region: process.env.AWS_REGION_NAME || 'us-east-1'
+    });
+    const params = {
+      ClientId: USER_POOL_CLIENT_ID,
+      Username: email
+    };
+    const command = new ForgotPasswordCommand(params)
+    const result = await cognitoClient.send(command)
+    const duration = Date.now() - startTime
+    logBusiness('forgot_password_success', null, requestedId, {
+      email: email.trim().toLowerCase(),
+      deliveryMedium: result.CodeDeliveryDetails?.DeliveryMedium,
+      destination: result.CodeDeliveryDetails?.Destination
+    });
+
+    res.status(200).json({
+      message: 'Password reset code sent successfully', 
+      email: email.trim().toLowerCase(),
+      deliveryDetails: {
+        destination: result.CodeDeliveryDetails?.Destination,
+        deliveryMedium: result.CodeDeliveryDetails?.DeliveryMedium
+      },
+      nextStep: "reset_password",
+      instructions: "Check your email for the verification code and use it with the new password in the reset-password endpoint",
+      requestedId,
+      duration: `${duration}ms`
+    })
+
+  } catch (error){
+    logError(error, requestedId, null, { 
+      operation: 'forgot_password', 
+      email 
+    });
+    let errorMessage = "Failed to send password reset code";
+    let statusCode = 500;
+    if (error.name === "UserNotFoundException") {
+      errorMessage = "User not found";
+      statusCode = 404;
+      logSecurity('forgot_password_user_not_found', null, requestId, { email });
+    } else if (error.name === "InvalidParameterException") {
+      errorMessage = "Invalid input parameters";
+      statusCode = 400;
+    } else if (error.name === "LimitExceededException") {
+      errorMessage = "Too many password reset attempts. Please try again later";
+      statusCode = 429;
+      logSecurity('forgot_password_rate_limit', null, requestId, { email });
+    } else if (error.name === "NotAuthorizedException") {
+      errorMessage = "User account is disabled or not confirmed";
+      statusCode = 403;
+      logSecurity('forgot_password_unauthorized', null, requestId, { email });
+    } else if (error.name === "UserNotConfirmedException") {
+      errorMessage = "User account is not confirmed. Please confirm your account first";
+      statusCode = 400;
+    }
+    res.status(statusCode).json({
+      error: errorMessage,
+      errorType: error.name,
+      requestedId
+    });
+  } 
+})
+
+
 
 // 404 Handler
 app.use((req, res, next) => {
