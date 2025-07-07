@@ -68,6 +68,101 @@ class AuthController {
       });
     }
   }
+  async login(req, res) {
+    const { email, password } = req.body;
+    const requestId = req.requestId;
+    
+    try {
+      logBusiness('login_attempt', null, requestId, { email });
+      
+      const startTime = Date.now();
+      const result = await authService.loginUser({ email, password });
+      const duration = Date.now() - startTime;
+      
+      logAuth('user_logged_in', result.user.userId, email, requestId, true);
+      
+      res.status(200).json({
+        success: true,
+        message: "Login successful",
+        data: result,
+        requestId,
+        duration: `${duration}ms`
+      });
+      
+    } catch (error) {
+      logError(error, requestId, null, { operation: 'login', email });
+      
+      let statusCode = 500;
+      let message = "Login failed";
+      
+      if (error.name === "NotAuthorizedException") {
+        statusCode = 401;
+        message = "Invalid email or password";
+        logSecurity('login_invalid_credentials', null, requestId, { email });
+      } else if (error.name === "UserNotFoundException") {
+        statusCode = 404;
+        message = "User not found";
+        logSecurity('login_user_not_found', null, requestId, { email });
+      } else if (error.name === "UserNotConfirmedException") {
+        statusCode = 400;
+        message = "Account not confirmed";
+        logSecurity('login_unconfirmed_user', null, requestId, { email });
+      }
+      
+      res.status(statusCode).json({
+        success: false,
+        error: message,
+        errorType: error.name,
+        requestId
+      });
+    }
+  }
+  async confirm(req, res) {
+    const { email, confirmationCode } = req.body;
+    const requestId = req.requestId;
+    
+    try {
+      logBusiness('confirmation_attempt', null, requestId, { email });
+      
+      const startTime = Date.now();
+      await authService.confirmUser({ email, confirmationCode });
+      const duration = Date.now() - startTime;
+      
+      logBusiness('confirmation_success', null, requestId, { email });
+      
+      res.status(200).json({
+        success: true,
+        message: "Email confirmed successfully",
+        data: {
+          email,
+          nextStep: "login"
+        },
+        requestId,
+        duration: `${duration}ms`
+      });
+      
+    } catch (error) {
+      logError(error, requestId, null, { operation: 'confirm', email });
+      
+      let statusCode = 500;
+      let message = "Email confirmation failed";
+      
+      if (error.name === "CodeMismatchException") {
+        statusCode = 400;
+        message = "Invalid confirmation code";
+      } else if (error.name === "ExpiredCodeException") {
+        statusCode = 400;
+        message = "Confirmation code has expired";
+      }
+      
+      res.status(statusCode).json({
+        success: false,
+        error: message,
+        errorType: error.name,
+        requestId
+      });
+    }
+  }
 }
 
 module.exports = new AuthController();

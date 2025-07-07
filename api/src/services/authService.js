@@ -28,6 +28,70 @@ class AuthService {
         throw error;
         }
     }
+    async loginUser(loginData) {
+    const { email, password } = loginData;
+    
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      
+      // Validate input
+      if (!cleanEmail || !password) {
+        const error = new Error('Email and password are required');
+        error.name = 'ValidationError';
+        throw error;
+      }
+      
+      // Authenticate with Cognito
+      const authResult = await cognitoService.authenticateUser(cleanEmail, password);
+      
+      // Handle challenges if any
+      if (authResult.ChallengeName) {
+        return {
+          challenge: authResult.ChallengeName,
+          session: authResult.Session,
+          challengeParameters: authResult.ChallengeParameters
+        };
+      }
+      
+      // Extract tokens and user info
+      const tokens = authResult.AuthenticationResult;
+      const userInfo = this._extractUserInfo(tokens.IdToken);
+      
+      return {
+        user: userInfo,
+        tokens: {
+          accessToken: tokens.AccessToken,
+          idToken: tokens.IdToken,
+          refreshToken: tokens.RefreshToken,
+          tokenType: 'Bearer',
+          expiresIn: tokens.ExpiresIn,
+          expiresAt: new Date(Date.now() + (tokens.ExpiresIn * 1000)).toISOString()
+        }
+      };
+      
+    } catch (error) {
+      throw error;
+    }
+    }
+
+    async confirmUser(confirmData) {
+        const { email, confirmationCode } = confirmData;
+        
+        try {
+        const cleanEmail = email.trim().toLowerCase();
+        
+        if (!cleanEmail || !confirmationCode) {
+            const error = new Error('Email and confirmation code are required');
+            error.name = 'ValidationError';
+            throw error;
+        }
+        
+        await cognitoService.confirmUser(cleanEmail, confirmationCode);
+        
+        } catch (error) {
+        throw error;
+        }
+    }
     _validateInput(email, password, name) {
         if (!email || !password || !name) {
         const error = new Error('Email, password, and name are required');
@@ -69,5 +133,17 @@ class AuthService {
         
         return attributes;
     }
+    _extractUserInfo(idToken) {
+    // Basic decode of ID token (not verification - that's handled by API Gateway)
+    const payload = JSON.parse(Buffer.from(idToken.split('.')[1], 'base64').toString());
+    
+    return {
+      userId: payload.sub,
+      email: payload.email,
+      name: payload.name || payload.given_name || 'User',
+      username: payload.preferred_username || payload.email,
+      emailVerified: payload.email_verified
+    };
+  }
 }
 module.exports = new AuthService();

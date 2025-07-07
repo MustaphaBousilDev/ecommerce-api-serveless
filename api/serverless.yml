@@ -1,119 +1,92 @@
-# "org" ensures this Service is used with the correct Serverless Framework Access Key.
-org: mugiwara0789
-# "app" enables Serverless Framework Dashboard features and sharing them with other Services.
-app: api-ecommerce-serverless
-# "service" is the name of this project. This will also be added to your AWS resource names.
-service: api
-
-stages:
-  default:
-    params:
-      tableName: "users-table-${sls:stage}"
+service: ecommerce-api-gateway
 
 provider:
   name: aws
-  runtime: nodejs20.x
+  runtime: nodejs18.x
   region: us-east-1
   stage: ${opt:stage, 'dev'}
-
-  # Enable X-Ray Tracing
-  tracing:
-    lambda: true # Enable tracing for lambda functions 
-    apiGateway: true # Enable tracing for API Gateway
-
-  #CloudWAtch Logs Configuration 
-  logs:
-    httpApi: true # Enable API Gateway logs
-
   
+  environment:
+    USER_POOL_ID: ${env:USER_POOL_ID}
+    USER_POOL_CLIENT_ID: ${env:USER_POOL_CLIENT_ID}
+    USER_POOL_CLIENT_SECRET: ${env:USER_POOL_CLIENT_SECRET, ''}
+    USERS_TABLE: ${env:USERS_TABLE}
+    AWS_REGION_NAME: ${env:AWS_REGION_NAME, 'us-east-1'}
+    
   iam:
     role:
       statements:
-        # DynamoDB Permessions
         - Effect: Allow
           Action:
-            - dynamodb:Query
-            - dynamodb:Scan
-            - dynamodb:GetItem
-            - dynamodb:PutItem
-            - dynamodb:UpdateItem
-            - dynamodb:DeleteItem
-          Resource:
-            - Fn::GetAtt: [UsersTable, Arn]
-        # X-Ray Permission 
-        - Effect: Allow 
-          Action:
-            - xray:PutTraceSegments  #Send tracing data to X-Ray
-            - xray:PutTelemetryRecords  # Send performance metrics
+            - cognito-idp:*
           Resource: "*"
-        # CloudWatch Permissions
-        - Effect: Allow 
+        - Effect: Allow
           Action:
-            - logs:CreateLogGroup # Create log groups
-            - logs:CreateLogStream # Create log streams
-            - logs:PutLogEvents # Write log entries
+            - dynamodb:*
           Resource: "*"
-  environment:
-    USERS_TABLE: ${param:tableName}
-    # Cognito Config 
-    USER_POOL_ID: ${env:USER_POOL_ID}
-    USER_POOL_CLIENT_ID: ${env:USER_POOL_CLIENT_ID}
-    AWS_REGION_NAME: us-east-1
-    # Tracing 
-    #_X_AMZN_TRACE_ID: ${env:_X_AMZN_TRACE_ID, ""}
-    AWS_XRAY_TRACING_NAME: ${self:service}-${self:provider.stage}
 
 functions:
-  api:
-    handler: handler.handler
+  # 🔐 Auth Service - All public authentication endpoints
+  authService:
+    handler: auth-service.handler
+    timeout: 30
+    memorySize: 256
     events:
-      - httpApi: "*"
-    # Function-level tracing configuration
-    tracing: Active              # Enable X-Ray tracing for this function
-    timeout: 30                  # Function timeout
-    memorySize: 512             # Memory allocation
-    # CloudWatch log retention
-    logRetentionInDays: 14 # Automatic log cleanup
+      - http:
+          path: /auth/register
+          method: POST
+          cors: true
+      - http:
+          path: /auth/login
+          method: POST
+          cors: true
+      - http:
+          path: /auth/confirm
+          method: POST
+          cors: true
+      - http:
+          path: /auth/resend-confirmation
+          method: POST
+          cors: true
+      - http:
+          path: /auth/forgot-password
+          method: POST
+          cors: true
+      - http:
+          path: /auth/reset-password
+          method: POST
+          cors: true
+      - http:
+          path: /auth/health
+          method: GET
+          cors: true
 
-resources:
-  Resources:
-    UsersTable:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        AttributeDefinitions:
-          - AttributeName: userId
-            AttributeType: S
-        KeySchema:
-          - AttributeName: userId
-            KeyType: HASH
-        BillingMode: PAY_PER_REQUEST
-        TableName: ${param:tableName}
-        # Enable DynamoDB contributor insights
-        ContributorInsightsSpecification:
-          Enabled: true
+  # 👤 User Service - Protected user management endpoints  
+  userService:
+    handler: user-service.handler
+    timeout: 30
+    memorySize: 256
+    events:
+      - http:
+          path: /users/profile
+          method: GET
+          cors: true
+      - http:
+          path: /users/profile
+          method: POST
+          cors: true
+      - http:
+          path: /users/change-password
+          method: POST
+          cors: true
+      - http:
+          path: /users/health
+          method: GET
+          cors: true
 
-    # CloudWatch Log Group for API functions
-    ApiLogGroup:
-      Type: AWS::Logs::LogGroup
-      Properties:
-        LogGroupName: /aws/lambda/${self:service}-${self:provider.stage}-api
-        RetentionInDays: 14
 plugins:
   - serverless-offline
-  - serverless-dotenv-plugin
-  - serverless-plugin-tracing  # Add this for X-Ray tracing
 
-# Custom configuration
 custom:
-  # Serverless Offline Configuration
   serverless-offline:
     httpPort: 3000
-    host: 0.0.0.0
-    stage: ${self:provider.stage}
-  
-  # Environment-specific settings
-  stages:
-    dev:
-      logLevel: debug
-    prod:
-      logLevel: warn
