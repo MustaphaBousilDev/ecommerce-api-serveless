@@ -2,6 +2,18 @@
   "name": "api",
   "version": "1.0.0",
   "description": "",
+  "scripts": {
+    "start": "serverless offline",
+    "dev": "serverless offline --stage dev",
+    "offline": "serverless offline",
+    "deploy": "serverless deploy",
+    "deploy:auth": "serverless deploy function --function authService",
+    "deploy:user": "serverless deploy function --function userService", 
+    "logs:auth": "serverless logs --function authService --tail",
+    "logs:user": "serverless logs --function userService --tail",
+    "remove": "serverless remove",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.830.0",
     "@aws-sdk/client-dynamodb": "^3.585.0",

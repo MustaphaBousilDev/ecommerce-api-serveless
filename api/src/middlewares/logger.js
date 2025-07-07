@@ -7,9 +7,8 @@ const {
     logPerformance  
 } = require('../utils/logger')
 
-const requestLoggin = (req, res, next) => {
-  req.requestId = uuidv4();
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - RequestID: ${req.requestId}`);
+const requestLogger = (req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
   next();
 };
 
@@ -30,6 +29,6 @@ const errorLoggin = (err, req, res, next) => {
 
 
 module.exports = {
-    requestLoggin,
+    requestLogger,
     errorLoggin
 }

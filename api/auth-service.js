@@ -1,19 +1,18 @@
 const express = require('express');
 const serverless = require('serverless-http');
-const authRoutes = require('./src/routes/authRoutes');
-const { requestLogger, errorLogger } = require('./src/middlewares/logger');
-const { logger } = require('./src/utils/logger');
+const authRoutes = require('./src/routers/authRouter');
+
 
 // Express App Setup
 const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(requestLogger);
+
 
 app.use('/auth', authRoutes);
 
-app.use(errorLogger);
+
 
 // Health check for this service
 app.get('/health', (req, res) => {
@@ -32,9 +31,6 @@ app.use((req, res) => {
   });
 });
 
-logger.info('Auth Service Starting', {
-  service: 'auth-service',
-  endpoints: ['/auth/register', '/auth/login', '/auth/confirm', '/auth/resend-confirmation', '/auth/forgot-password', '/auth/reset-password']
-});
+
 
 module.exports.handler = serverless(app);

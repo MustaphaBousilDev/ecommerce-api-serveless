@@ -246,7 +246,7 @@ app.use(requestLoggin);
 
 
 //Routers
-app.use('/auth', authRoutes);
+//app.use('/auth', authRoutes);
 
 
 // Log application startup

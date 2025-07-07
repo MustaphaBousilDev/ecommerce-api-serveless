@@ -21,22 +21,10 @@ const logFormat = winston.format.combine(
 )
 
 //create logger instance 
-const logger = winston.createLogger({
-    level: process.env.LOG_LEVEL || 'info',
-    format: logFormat,
-    defaultMeta: {
-        service: 'ecommerce-api',
-        version: '1.0.0'
-    },
-    transports: [
-        // console transport for cloudwatch 
-        new winston.transports.Console({
-            handleExceptions: true,
-            handleRejections: true
-        })
-    ],
-    exitOnError: false,
-})
+const logger = {
+  info: (message, data) => console.log('INFO:', message, data),
+  error: (message, data) => console.error('ERROR:', message, data)
+};
 
 const loggerHelpers = {
     logRequest: (req, requestId) => {
