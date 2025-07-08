@@ -1188,7 +1188,7 @@ app.post("/auth/change-password",authenticateToken, async (req, res)=> {
   }
 })
 
-app.post('/auth/logout', ()=> {})
+
 app.post('/auth/logout-all', ()=> {})
 app.post('/auth/user-info', ()=> {})
 app.post('/auth/refresh', ()=> {})

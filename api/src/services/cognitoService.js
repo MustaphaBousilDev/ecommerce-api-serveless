@@ -1,4 +1,4 @@
-const { SignUpCommand, ConfirmSignUpCommand, InitiateAuthCommand } = require("@aws-sdk/client-cognito-identity-provider");
+const { SignUpCommand, ConfirmSignUpCommand, InitiateAuthCommand, GlobalSignOutCommand  } = require("@aws-sdk/client-cognito-identity-provider");
 const { cognitoClient, USER_POOL_CLIENT_ID } = require('../config/aws');
 
 class CognitoService {
@@ -63,6 +63,13 @@ class CognitoService {
         
         const command = new InitiateAuthCommand(authParams);
         return await cognitoClient.send(command);
+    }
+    async logout(accessToken) {
+        const params = {
+            AccessToken: accessToken
+        };
+        const command = new GlobalSignOutCommand(params);
+        return  cognitoClient.send(command);
     }
 }
 module.exports = new CognitoService();

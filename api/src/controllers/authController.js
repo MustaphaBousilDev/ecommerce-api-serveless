@@ -163,6 +163,43 @@ class AuthController {
       });
     }
   }
+  async logout(req,res) {
+    const requestedId = req.requestId;
+
+    try {
+      const startTime = Date.now()
+      const authHeader = req.headers['authorization']
+      const accessToken = authHeader && authHeader.split(' ')[1]
+      if (!accessToken) {
+        return res.status(400).json({
+          success: false, 
+          error: 'Access token required', 
+          requestedId
+        })
+      }
+      await authService.logout(accessToken)
+      const duration = Date.now()-startTime
+      res.status(200).json({
+          success: true,
+          message: "Logout successful",
+          requestedId,
+          duration: `${duration}ms`
+      });
+    } catch(error) {
+      let statusCode = 500;
+      let message = "LogOut failed";
+      if (error.name === "NotAuthorizedException") {
+        statusCode = 401;
+        message = "Invalid or expired token";
+      }
+      res.status(statusCode).json({
+        success: false,
+        error: message,
+        errorType: error.name,
+        requestedId
+      });
+    }
+  }
 }
 
 module.exports = new AuthController();

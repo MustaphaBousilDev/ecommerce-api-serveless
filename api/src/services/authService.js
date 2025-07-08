@@ -93,6 +93,9 @@ class AuthService {
         throw error;
         }
     }
+    async logout(authService) {
+      await cognitoService.logout(authService)
+    }
     _validateInput(email, password, name) {
         if (!email || !password || !name) {
         const error = new Error('Email, password, and name are required');

@@ -7,5 +7,6 @@ const { validateRegister } = require('../validators/authValidator');
 router.post('/register',/**validateRegister (for using +009 method ) in production remove it */ authController.register);
 router.post('/login', authController.login);
 router.post('/confirm', authController.confirm);
+router.post('/logout', authController.logout)
 
 module.exports = router;
