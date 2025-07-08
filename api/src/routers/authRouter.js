@@ -8,5 +8,6 @@ router.post('/register',/**validateRegister (for using +009 method ) in producti
 router.post('/login', authController.login);
 router.post('/confirm', authController.confirm);
 router.post('/logout', authController.logout)
+router.post('/resend_confirmation', authController.resendConfirmation)
 
 module.exports = router;

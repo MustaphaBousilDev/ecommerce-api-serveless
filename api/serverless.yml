@@ -49,7 +49,7 @@ functions:
           method: POST
           cors: true
       - http:
-          path: /auth/resend-confirmation
+          path: /auth/resend_confirmation
           method: POST
           cors: true
       - http:

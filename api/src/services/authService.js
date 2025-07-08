@@ -73,7 +73,6 @@ class AuthService {
       throw error;
     }
     }
-
     async confirmUser(confirmData) {
         const { email, confirmationCode } = confirmData;
         
@@ -95,6 +94,20 @@ class AuthService {
     }
     async logout(authService) {
       await cognitoService.logout(authService)
+    }
+    async resendConfirmation(email){
+      try {
+        const cleanEmail = email.trim().toLowerCase()
+        if(!cleanEmail){
+          const error = new Error('Email is required')
+          error.name = "ValidationError"
+          throw error;
+        }
+        const result = await cognitoService.resendConfirmation(email)
+        return result;
+      } catch(error) {
+        throw error;
+      }
     }
     _validateInput(email, password, name) {
         if (!email || !password || !name) {

@@ -200,6 +200,48 @@ class AuthController {
       });
     }
   }
+  async resendConfirmation(req, res) {
+    const requestedId = req.requestId;
+    const { email } = req.body;
+    try {
+      const startDate = Date.now()
+      const result = await authService.resendConfirmation(email)
+      const duration = Date.now() - startDate
+      res.status(200).json({
+        success: true,
+        email: email,
+        deliveryDetails: {
+          destination: result.CodeDeliveryDetails?.Destination,
+          deliveryMedium: result.CodeDeliveryDetails?.DeliveryMedium
+        },
+        nextStep: "confirm_email",
+        message: "Confirmation code sent successfully",
+        requestedId,
+        duration: `${duration}ms`
+      })
+    } catch(error) {
+      console.error('Resend confirmation error:', error);
+      let errorMessage = "Failed to resend confirmation code";
+      let statusCode = 500;
+      if (error.name === "UserNotFoundException") {
+        errorMessage = "User not found";
+        statusCode = 404;
+      } else if (error.name === "InvalidParameterException") {
+        errorMessage = "User is already confirmed";
+        statusCode = 400;
+      } else if (error.name === "LimitExceededException") {
+        errorMessage = "Too many resend attempts. Please try again later";
+        statusCode = 429;
+      } else if (error.name === "NotAuthorizedException") {
+        errorMessage = "User account is disabled or deleted";
+        statusCode = 403;
+      }
+      res.status(statusCode).json({
+        error: errorMessage,
+        errorType: error.name
+      });
+    }
+  }
 }
 
 module.exports = new AuthController();
