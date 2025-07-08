@@ -89,6 +89,7 @@ class AuthService {
         await cognitoService.confirmUser(cleanEmail, confirmationCode);
         
         } catch (error) {
+          
         throw error;
         }
     }
