@@ -61,6 +61,31 @@ app.use((req, res, next)=> {
   next()
 })
 
+//Input validation middleware
+app.use((req, res, next) => {
+  if(req.body && typeof req.body === 'object'){
+    const fieldCount = Object.keys(req.body).length
+    if(fieldCount > 15){
+      console.warn(`[${req.requestId}] 🚨 Too many fields: ${fieldCount}`)
+      res.status(400).json({
+        success: false, 
+        error: 'To many fields in request', 
+        requestId: req.requestId
+      })
+    }
+    const bodyStr = JSON.stringify(req.body)
+    if(bodyStr.length > 10000){
+      console.warn(`[${req.requestId}] 🚨 Large payload: ${bodyStr.length} bytes`);
+      return res.status(400).json({
+        success: false,
+        error: 'Request payload too large',
+        requestId: req.requestId
+      });
+    }
+  }
+  next()
+})
+
 app.use(express.json());
 app.use('/auth', authRoutes);
 // Health check for this service
