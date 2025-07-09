@@ -93,18 +93,63 @@ app.get('/health', (req, res) => {
   res.json({
     service: 'auth-service',
     status: 'healthy',
+    timestamp: new Date().toISOString(),
+    requestId: req.requestId,
+    environment: {
+      region: process.env.AWS_REGION_NAME || 'us-east-1',
+      userPoolConfigured: !!process.env.USER_POOL_ID,
+      clientConfigured: !!process.env.USER_POOL_CLIENT_ID
+    },
+    version: '1.0.0'
+  });
+});
+// Security info endpoint
+app.get('/auth/info', (req, res) => {
+  res.json({
+    service: 'auth-service',
+    endpoints: [
+      'POST /auth/register', 'POST /auth/login', 'POST /auth/confirm',
+      'POST /auth/logout', 'POST /auth/logout_all', 'POST /auth/resend_confirmation',
+      'POST /auth/forgot_password', 'POST /auth/reset_password',
+      'POST /auth/change_password', 'POST /auth/refresh_token'
+    ],
+    security: {
+      headers: ['X-Content-Type-Options', 'X-Frame-Options', 'X-XSS-Protection'],
+      validation: 'enabled',
+      logging: 'enabled'
+    },
+    requestId: req.requestId
+  });
+});
+// 404 Handler
+app.use((req, res, next) => {
+  console.warn(`[${req.requestId}] 🔍 404 Not Found: ${req.method} ${req.path}`);
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+    service: 'auth-service',
+    path: req.path,
+    requestId: req.requestId
+  });
+});
+// Global Error Handler (MUST BE LAST)
+app.use((err, req, res, next) => {
+  const requestId = req.requestId || 'unknown';
+  console.error(`[${requestId}] 💥 Error:`, {
+    message: err.message,
+    stack: err.stack,
+    path: req.path,
+    method: req.method
+  });
+  
+  res.status(500).json({
+    success: false,
+    error: 'Internal Server Error',
+    requestId,
     timestamp: new Date().toISOString()
   });
 });
-
-app.use((req, res) => {
-  res.status(404).json({
-    error: 'Not Found',
-    service: 'auth-service',
-    path: req.path
-  });
-});
-
-
+console.log('🚀 Auth Service Starting...');
+console.log('📋 Security Features: ✅ Headers ✅ Validation ✅ Logging ✅ Error Handling');
 
 module.exports.handler = serverless(app);
