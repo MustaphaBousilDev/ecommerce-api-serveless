@@ -10,8 +10,6 @@ const app = express();
 
 app.use(express.json());          
 
-
-
 app.post('/auth/logout-all', ()=> {})
 app.post('/auth/user-info', ()=> {})
 app.post('/auth/refresh', ()=> {})
