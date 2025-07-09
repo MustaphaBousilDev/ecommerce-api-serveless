@@ -2,7 +2,7 @@ const express = require('express');
 const serverless = require('serverless-http');
 const authRoutes = require('./src/routers/authRouter');
 const {v4: uuidv4} = require('uuid')
-
+const { logRequest, logResponse, logPerformance } = require('./src/utils/logger');
 
 // Environment validation 
 const requiredEvns = ['USER_POOL_ID', 'USER_POOL_CLIENT_ID']
@@ -43,21 +43,35 @@ app.use((req, res, next)=> {
   req.requestId = uuidv4();
   req.startTime = Date.now()
 
-  console.log(`[${req.requestId}] 📥 ${req.method} ${req.path}`, {
+  logRequest(req.method, req.path, req.requestId, req.user?.userId, {
     ip: req.ip || req.connection.remoteAddress,
     userAgent: req.get('User-Agent'),
-    timestamp: new Date().toISOString()
-  })
+    contentLength: req.get('content-length'),
+    referer: req.get('referer')
+  });
 
+  // Enhanced response logging
   const originalSend = res.send;
   res.send = function(data) {
     const duration = Date.now() - req.startTime;
-    console.log(`[${req.requestId}] 📤 ${res.statusCode} ${req.method} ${req.path} - ${duration}ms`)
-    if (duration > 2000) {
-      console.warn(`[${req.requestId}] ⚠️ Slow request: ${duration}ms`)
+    
+    // Log response
+    logResponse(req.method, req.path, res.statusCode, req.requestId, req.user?.userId, {
+      duration,
+      contentLength: data ? data.length : 0
+    });
+    
+    // Log performance if slow
+    if (duration > 1000) {
+      logPerformance('http_request', duration, req.requestId, req.user?.userId, {
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode
+      });
     }
-    originalSend.call(this, data)
-  }
+    
+    originalSend.call(this, data);
+  };
   next()
 })
 

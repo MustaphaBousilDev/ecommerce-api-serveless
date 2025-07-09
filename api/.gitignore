@@ -2,3 +2,6 @@ node_modules
 .serverless
 .env.dev
 serverless-cours.md
+.env
+logs/*.log
+!logs/.gitkeep
