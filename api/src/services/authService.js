@@ -123,6 +123,30 @@ class AuthService {
         throw error;
       }
     }
+    async resetPassword(dto){
+      const {email, confirmationCode, newPassword} = dto;
+      try {
+        if (!email.trim() || !confirmationCode || !newPassword){
+          let error = new Error('Email and ConfirmationCode and Password are required')
+          error.name = "ValidationError"
+          throw error;
+        }
+        if (newPassword.length < 8){
+          let error = new Error('Strong Password must be great than 8 characters')
+          error.name = "ValidationError"
+          throw error;
+        }
+        let arg =  {
+          Username: email, 
+          ConfirmationCode: confirmationCode,
+          Password: newPassword
+        }
+        const result = await cognitoService.resetPassword(arg)
+        return result;
+      } catch(error) {
+        throw error;
+      }
+    }
     _validateInput(email, password, name) {
         if (!email || !password || !name) {
         const error = new Error('Email, password, and name are required');

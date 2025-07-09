@@ -57,7 +57,7 @@ functions:
           method: POST
           cors: true
       - http:
-          path: /auth/reset-password
+          path: /auth/reset_password
           method: POST
           cors: true
       - http:

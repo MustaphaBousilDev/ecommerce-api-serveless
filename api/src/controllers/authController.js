@@ -98,15 +98,15 @@ class AuthController {
       if (error.name === "NotAuthorizedException") {
         statusCode = 401;
         message = "Invalid email or password";
-        logSecurity('login_invalid_credentials', null, requestId, { email });
+        //logSecurity('login_invalid_credentials', null, requestId, { email });
       } else if (error.name === "UserNotFoundException") {
         statusCode = 404;
         message = "User not found";
-        logSecurity('login_user_not_found', null, requestId, { email });
+        //logSecurity('login_user_not_found', null, requestId, { email });
       } else if (error.name === "UserNotConfirmedException") {
         statusCode = 400;
         message = "Account not confirmed";
-        logSecurity('login_unconfirmed_user', null, requestId, { email });
+        //logSecurity('login_unconfirmed_user', null, requestId, { email });
       }
       
       res.status(statusCode).json({
@@ -258,6 +258,61 @@ class AuthController {
         requestedId
       });
       }
+  }
+  async resetPassword(req,res) {
+    const requestedId = req.requestId;
+    const { email } = req.body;
+    const startDate = Date.now()
+    const result = await authService.resetPassword(req.body)
+    const duration  = Date.now() - startDate;
+    res.status(200).json({
+      message: "Password reset successfully",
+      email : email.trim().toLowerCase(),
+      nextStep: "login",
+      instruction: "You can now login with your new password.",
+      requestedId,
+      duration: `${duration}ms`
+    })
+    try {
+
+    } catch(error) {
+      let errorMessage = "Password reset failed";
+    let statusCode = 500;
+    
+    // Handle specific Cognito errors
+    if (error.name === "CodeMismatchException") {
+      errorMessage = "Invalid confirmation code";
+      statusCode = 400;
+      logSecurity('reset_password_invalid_code', null, requestedId, { email });
+    } else if (error.name === "ExpiredCodeException") {
+      errorMessage = "Confirmation code has expired. Please request a new one";
+      statusCode = 400;
+      logSecurity('reset_password_expired_code', null, requestedId, { email });
+    } else if (error.name === "UserNotFoundException") {
+      errorMessage = "User not found";
+      statusCode = 404;
+      logSecurity('reset_password_user_not_found', null, requestedId, { email });
+    } else if (error.name === "InvalidPasswordException") {
+      errorMessage = "New password does not meet requirements";
+      statusCode = 400;
+      logSecurity('reset_password_invalid_password_policy', null, requestedId, { email });
+    } else if (error.name === "LimitExceededException") {
+      errorMessage = "Too many attempts. Please try again later";
+      statusCode = 429;
+      logSecurity('reset_password_rate_limit', null, requestedId, { email });
+    } else if (error.name === "NotAuthorizedException") {
+      errorMessage = "Invalid or expired confirmation code";
+      statusCode = 400;
+    } else if (error.name === "InvalidParameterException") {
+      errorMessage = "Invalid input parameters";
+      statusCode = 400;
+    }
+    res.status(statusCode).json({
+      error: errorMessage,
+      errorType: error.name,
+      requestedId
+    });
+    }
   }
   async resendConfirmation(req, res) {
     const requestedId = req.requestId;
