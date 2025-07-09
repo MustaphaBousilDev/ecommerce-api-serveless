@@ -17,6 +17,11 @@ provider:
     USER_POOL_CLIENT_SECRET: ${env:USER_POOL_CLIENT_SECRET, ''}
     USERS_TABLE: ${env:USERS_TABLE}
     AWS_REGION_NAME: ${env:AWS_REGION_NAME, 'us-east-1'}
+    NODE_ENV: ${opt:stage, 'dev'}
+
+  #Security & Peformance
+  timeout: 30
+  memorySize: 512
     
   iam:
     role:
@@ -29,18 +34,31 @@ provider:
           Action:
             - dynamodb:*
           Resource: "*"
+        - Effect: Allow 
+          Action: 
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource: "*"
 
 functions:
   # 🔐 Auth Service - All public authentication endpoints
   authService:
     handler: auth-service.handler
     timeout: 30
-    memorySize: 256
+    memorySize: 512
+    reservedConcurrency: 50  # Limit concurrent executions
     events:
       - http:
           path: /auth/register
           method: POST
-          cors: true
+          cors:
+            origin: "*"
+            headers:
+              - Content-Type
+              - Authorization 
+              - X-Requested-With
+            allowCredentials: false
       - http:
           path: /auth/refresh_token
           method: POST
@@ -112,3 +130,31 @@ plugins:
 custom:
   serverless-offline:
     httpPort: 3000
+    host: 0.0.0.0
+    noAuth: true 
+    noTimeout: true 
+
+  # Api Gateway Configuration
+  apiGateway:
+    # Request validation 
+    request:
+      validateRequestBody: true 
+      validateRequestParameters: true 
+
+    # Throttling (Rate Limiting )
+    throttle:
+      rateLimit: 1000 #request per second 
+      burstLimit: 2000 # burst requests 
+
+    # Binary Media types 
+    binaryMediaTypes:
+      - '*/*'
+
+    # Minimum compression size 
+    minimumCompressionSize: 1024
+
+    # Api Gateway logs
+    logs:
+      level: INFO 
+      dataTrace: true 
+      executionLogging: true 
