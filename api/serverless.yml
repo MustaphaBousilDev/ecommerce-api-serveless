@@ -5,6 +5,11 @@ provider:
   runtime: nodejs18.x
   region: us-east-1
   stage: ${opt:stage, 'dev'}
+
+  #add logging 
+  logs:
+    restApi:
+      accessLogging: true
   
   environment:
     USER_POOL_ID: ${env:USER_POOL_ID}
