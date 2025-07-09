@@ -53,7 +53,7 @@ functions:
           method: POST
           cors: true
       - http:
-          path: /auth/forgot-password
+          path: /auth/forgot_password
           method: POST
           cors: true
       - http:

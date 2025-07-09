@@ -1,5 +1,5 @@
 const authService = require('../services/authService');
-const { logBusiness, logAuth, logError } = require('../utils/logger');
+const { logBusiness, logAuth, logError, logSecurity } = require('../utils/logger');
 
 class AuthController {
   async register(req, res) {
@@ -199,6 +199,65 @@ class AuthController {
         requestedId
       });
     }
+  }
+  async forgotPassword(req, res) {
+    const requestedId = req.requestId;
+    const { email } = req.body;
+    try {
+      if(!email || !email.trim()){
+        logSecurity('forgot_password_invalid_input', null, requestedId, { 
+          missing: { email: !email }
+        });
+      
+        return res.status(400).json({
+          error: 'Email is required',
+          requestedId
+        });
+      }
+      const startTime = Date.now()
+      const result = await authService.forgotPassword(email)
+      const duration = Date.now() - startTime;
+      res.status(200).json({
+        message: "Password reset code send successfuly",
+        email: email.trim().toLowerCase(),
+        deliveryDetails: {
+          destination: result.CodeDeliveryDetails?.Destination,
+          deliveryMedium: result.CodeDeliveryDetails?.DeliveryMedium
+        },
+        nextStep: "reset_password",
+        instruction: "Check your boite mail for the verification code and use it with the new password in the reset-password endpoint",
+        requestedId,
+        duration: `${duration}ms`
+      })
+    } catch(error) {
+      console.error('forgot password error:', error);
+      let errorMessage = "Failed to forgotPassword"
+      let statusCode = 500
+      if (error.name === "UserNotFoundException") {
+        errorMessage = "User not found";
+        statusCode = 404;
+        logSecurity('forgot_password_user_not_found', null, requestId, { email });
+      } else if (error.name === "InvalidParameterException") {
+        errorMessage = "Invalid input parameters";
+        statusCode = 400;
+      } else if (error.name === "LimitExceededException") {
+        errorMessage = "Too many password reset attempts. Please try again later";
+        statusCode = 429;
+        logSecurity('forgot_password_rate_limit', null, requestId, { email });
+      } else if (error.name === "NotAuthorizedException") {
+        errorMessage = "User account is disabled or not confirmed";
+        statusCode = 403;
+        logSecurity('forgot_password_unauthorized', null, requestId, { email });
+      } else if (error.name === "UserNotConfirmedException") {
+        errorMessage = "User account is not confirmed. Please confirm your account first";
+        statusCode = 400;
+      }
+      res.status(statusCode).json({
+        error: errorMessage,
+        errorType: error.name,
+        requestedId
+      });
+      }
   }
   async resendConfirmation(req, res) {
     const requestedId = req.requestId;

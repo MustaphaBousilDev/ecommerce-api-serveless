@@ -109,6 +109,20 @@ class AuthService {
         throw error;
       }
     }
+    async forgotPassword(email) {
+      try { 
+         const clenEmail = email.trim().toLowerCase()
+         if (!clenEmail) {
+          const error = new Error("Email is required")
+          error.name = "ValidationError"
+          throw error;
+         }
+         const result = await cognitoService.forgotPassword(email)
+         return result;
+      } catch(error) {
+        throw error;
+      }
+    }
     _validateInput(email, password, name) {
         if (!email || !password || !name) {
         const error = new Error('Email, password, and name are required');
