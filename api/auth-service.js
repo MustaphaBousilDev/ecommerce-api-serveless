@@ -3,17 +3,9 @@ const serverless = require('serverless-http');
 const authRoutes = require('./src/routers/authRouter');
 
 
-// Express App Setup
 const app = express();
-
-// Middleware
 app.use(express.json());
-
-
 app.use('/auth', authRoutes);
-
-
-
 // Health check for this service
 app.get('/health', (req, res) => {
   res.json({
