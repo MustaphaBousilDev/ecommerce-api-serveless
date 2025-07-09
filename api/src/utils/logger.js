@@ -172,6 +172,15 @@ const logError = (error, requestId, userId = null, metadata = {}) => {
     ...metadata
   });
 };
+const logInfo = (message, requestId = null, userId = null, metadata = {}, layer) => {
+  logger.info(`Trace: ${message}`, {
+    category: 'trace',
+    requestId,
+    layer,
+    userId,
+    ...metadata
+  });
+};
 
 module.exports = {
   logger,
@@ -182,5 +191,6 @@ module.exports = {
   logSecurity,
   logDatabase,
   logPerformance,
-  logError
+  logError,
+  logInfo
 };

@@ -1,6 +1,7 @@
 const { error } = require('winston');
 const authService = require('../services/authService');
-const { logBusiness, logAuth, logError, logSecurity, logPerformance } = require('../utils/logger');
+const { logBusiness, logAuth, logError, logSecurity, logPerformance, logInfo } = require('../utils/logger');
+
 
 
 class AuthController {
@@ -70,6 +71,7 @@ class AuthController {
     }
   }
   async login(req, res) {
+    logInfo('###--- Start Login Method ---###', req.requestId, null, {}, 'Controller')
     const { email, password } = req.body;
     const requestId = req.requestId;
     
