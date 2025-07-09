@@ -449,6 +449,40 @@ class AuthController {
       })
     }
   }
+  async refreshToken(req, res) {
+    const { refreshToken } = req.body
+    const requestedId = req.requestId
+    try {
+      const startTime = Date.now()
+      const result = await authService.refreshAccessToken(refreshToken)
+      const duration = Date.now() - startTime;
+      res.status(200).json({
+        success: true, 
+        message: "Tokens refreshed successfully", 
+        data: result, 
+        requestedId,
+        duration: `${duration}ms`
+      })
+    } catch(error) {
+        let statusCode = 500;
+        let message = "Token refresh failed";
+        
+        if (error.name === "NotAuthorizedException") {
+          statusCode = 401;
+          message = "Invalid or expired refresh token";
+        } else if (error.name === "ValidationError") {
+          statusCode = 400;
+          message = error.message;
+        }
+        
+        res.status(statusCode).json({
+          success: false,
+          error: message,
+          errorType: error.name,
+          requestId
+        });
+      }
+  }
 }
 
 module.exports = new AuthController();

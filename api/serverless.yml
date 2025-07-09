@@ -37,6 +37,11 @@ functions:
           method: POST
           cors: true
       - http:
+          path: /auth/refresh_token
+          method: POST
+          cors: true
+      
+      - http:
           path: /auth/logout
           method: POST
           cors: true

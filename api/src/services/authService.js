@@ -174,6 +174,26 @@ class AuthService {
         throw error;
       }
     }
+    async refreshAccessToken(refreshToken) {
+      try {
+        if(!refreshToken) {
+          const error = new Error('Refresh token is required')
+          error.name = 'ValidationError'
+          throw error;
+        }
+        const authResult = await cognitoService.refreshToken(refreshToken)
+        const tokens = authResult.AuthenticationResult;
+        return {
+          accessToken: tokens.AccessToken,
+          idToken: tokens.IdToken,
+          tokenType: 'Bearer',
+          expiresIn: tokens.ExpiresIn,
+          expiresAt: new Date(Date.now() + (tokens.ExpiresIn * 1000)).toISOString()
+        }
+      } catch(error) {
+        throw error;
+      }
+    }
     _validateInput(email, password, name) {
         if (!email || !password || !name) {
         const error = new Error('Email, password, and name are required');

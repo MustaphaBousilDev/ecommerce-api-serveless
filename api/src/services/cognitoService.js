@@ -124,5 +124,25 @@ class CognitoService {
         const result = cognitoClient.send(command)
         return result;
     }
+    async refreshToken(refreshToken) {
+        const params = {
+            ClientId: USER_POOL_CLIENT_ID,
+            AuthFlow: 'REFRESH_TOKEN_AUTH',
+            AuthParameters: {
+                REFRESH_TOKEN: refreshToken
+            }
+        }
+        const APP_CLIENT_SECRET = process.env.USER_POOL_CLIENT_SECRET;
+        if (APP_CLIENT_SECRET) {
+            const crypto = require('crypto');
+            // For refresh, use the refresh token to generate hash
+            const secretHash = crypto.createHmac('sha256', APP_CLIENT_SECRET)
+            .update(refreshToken + USER_POOL_CLIENT_ID)
+            .digest('base64');
+            params.AuthParameters.SECRET_HASH = secretHash;
+        }
+        const command = new InitiateAuthCommand(params)
+        return cognitoClient.send(command)
+    }
 }
 module.exports = new CognitoService();
