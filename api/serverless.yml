@@ -41,6 +41,10 @@ functions:
           method: POST
           cors: true
       - http:
+          path: /auth/logout_all
+          method: POST 
+          cors: true
+      - http:
           path: /auth/login
           method: POST
           cors: true

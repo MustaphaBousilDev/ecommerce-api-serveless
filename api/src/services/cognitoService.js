@@ -116,5 +116,13 @@ class CognitoService {
       return cognitoClient.send(command)
 
     }
+    async logoutAllDevices(accessToken) {
+        const params = {
+            AccessToken: accessToken
+        }
+        const command = new GlobalSignOutCommand(params)
+        const result = cognitoClient.send(command)
+        return result;
+    }
 }
 module.exports = new CognitoService();

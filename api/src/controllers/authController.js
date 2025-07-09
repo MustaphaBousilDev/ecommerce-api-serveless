@@ -1,3 +1,4 @@
+const { error } = require('winston');
 const authService = require('../services/authService');
 const { logBusiness, logAuth, logError, logSecurity } = require('../utils/logger');
 
@@ -409,6 +410,43 @@ class AuthController {
         errorType: error.name,
         requestedId
       });
+    }
+  }
+  async logoutAllDevices(req, res) {
+    const requestedId = req.requestId;
+    try {
+      const startTime = Date.now()
+      
+      const authHeader = req.headers['authorization'];
+      const accessToken = authHeader && authHeader.split(' ')[1]
+      if(!accessToken){
+        res.status(400).json({
+          success: false,
+          error: 'Access token required',
+          requestedId
+        })
+      }
+      await authService.logoutAllDevices(accessToken)
+      const duration = Date.now() - startTime;
+      res.status(200).json({
+        success: true, 
+        message: 'Logged Out from all Devices successfuly',
+        requestedId,
+        duration: `${duration}ms`
+      })
+    } catch (error) {
+      let statusCode = 500;
+      let message ="Logout from all devices failed";
+      if (error.name === "NotAuthorizedException"){
+        statusCode = 401;
+        message = "Invalid or expired token";
+      }
+      res.status(statusCode).json({
+        success: false, 
+        error: message,
+        errorType: error.name, 
+        requestedId
+      })
     }
   }
 }

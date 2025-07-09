@@ -166,6 +166,14 @@ class AuthService {
         throw error;
       }
     }
+    async logoutAllDevices(accessToken) {
+      try {
+        const result = await  cognitoService.logoutAllDevices(accessToken);
+        return result;
+      } catch(error) {
+        throw error;
+      }
+    }
     _validateInput(email, password, name) {
         if (!email || !password || !name) {
         const error = new Error('Email, password, and name are required');
