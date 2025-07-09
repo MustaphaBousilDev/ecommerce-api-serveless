@@ -356,6 +356,61 @@ class AuthController {
       });
     }
   }
+  async changePassword(req,res){
+    const requestedId = req.requestId
+    try {
+      let startDate = Date.now()
+      let authHeader = req.headers['authorization']
+      let accessToken = authHeader && authHeader.split(' ')[1]
+      if(!accessToken){
+        return res.status(400).json({
+          success: false, 
+          message: 'Access Token required', 
+          requestedId
+        })
+      }
+      const attr = {
+        ...req.body,
+        accessToken: accessToken
+      }
+      await  authService.changePassword(attr)
+      let duration = Date.now() - startDate;
+      res.status(200).json({
+        message: "Password changed successfully",
+        user: {
+          userId: req.user.userId,
+          email: req.user.email
+        },
+        requestedId,
+        duration: `${duration}ms`
+      })
+    } catch(error) {
+      let errorMessage = "Current password is incorrect";
+      let statusCode = 400;
+      if (error.name === "NotAuthorizedException") {
+      errorMessage = "Current password is incorrect";
+      statusCode = 400;
+      
+      } else if (error.name === "InvalidPasswordException") {
+        errorMessage = "New password does not meet requirements";
+        statusCode = 400;
+        
+      } else if (error.name === "LimitExceededException") {
+        errorMessage = "Too many password change attempts. Please try again later";
+        statusCode = 429;
+        
+      } else if (error.name === "InvalidParameterException") {
+        errorMessage = "Invalid input parameters";
+        statusCode = 400;
+      }
+
+      res.status(statusCode).json({
+        error: errorMessage,
+        errorType: error.name,
+        requestedId
+      });
+    }
+  }
 }
 
 module.exports = new AuthController();

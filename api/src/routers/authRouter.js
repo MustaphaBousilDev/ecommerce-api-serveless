@@ -11,5 +11,6 @@ router.post('/logout', authController.logout)
 router.post('/resend_confirmation', authController.resendConfirmation)
 router.post('/forgot_password', authController.forgotPassword)
 router.post('/reset_password', authController.resetPassword)
+router.post('/change_password', authController.changePassword)
 
 module.exports = router;

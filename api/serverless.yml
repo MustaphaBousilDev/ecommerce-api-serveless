@@ -61,6 +61,10 @@ functions:
           method: POST
           cors: true
       - http:
+          path: /auth/change_password
+          method: POST
+          cors: true
+      - http:
           path: /auth/health
           method: GET
           cors: true

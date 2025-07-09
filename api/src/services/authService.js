@@ -123,6 +123,25 @@ class AuthService {
         throw error;
       }
     }
+    async changePassword(attr){
+      const { currentPassword, newPassword} = attr;
+      try {
+        if(!currentPassword || !newPassword){
+          return this.resendConfirmation.status(400).json({
+            error: 'Current Password and new password are required'
+          })
+        }
+        if (currentPassword == newPassword) {
+          return res.status(400).json({
+            error: 'New password must be different from current password',
+          })
+        }
+        const result = await cognitoService.changePassword(attr)
+        return result;
+      } catch(error) {
+        throw error;
+      }
+    }  
     async resetPassword(dto){
       const {email, confirmationCode, newPassword} = dto;
       try {
