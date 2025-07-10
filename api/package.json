@@ -8,7 +8,7 @@
     "offline": "serverless offline",
     "deploy": "serverless deploy",
     "deploy:auth": "serverless deploy function --function authService",
-    "deploy:user": "serverless deploy function --function userService", 
+    "deploy:user": "serverless deploy function --function userService",
     "logs:auth": "serverless logs --function authService --tail",
     "logs:user": "serverless logs --function userService --tail",
     "remove": "serverless remove",
@@ -17,6 +17,7 @@
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.830.0",
     "@aws-sdk/client-dynamodb": "^3.585.0",
+    "@aws-sdk/client-rekognition": "^3.844.0",
     "@aws-sdk/lib-dynamodb": "^3.585.0",
     "aws-jwt-verify": "^5.1.0",
     "aws-xray-sdk-core": "^3.10.3",

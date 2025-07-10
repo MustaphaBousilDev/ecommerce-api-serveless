@@ -6,9 +6,12 @@ const {
     ResendConfirmationCodeCommand, 
     ForgotPasswordCommand, 
     ConfirmForgotPasswordCommand, 
-    ChangePasswordCommand ,
+    ChangePasswordCommand, 
+    RespondToAuthChallengeCommand,
 } = require("@aws-sdk/client-cognito-identity-provider");
 const { cognitoClient, USER_POOL_CLIENT_ID } = require('../config/aws');
+const { param } = require("express-validator");
+
 
 class CognitoService {
     async createUser(email, password, userAttributes){
@@ -143,6 +146,43 @@ class CognitoService {
         }
         const command = new InitiateAuthCommand(params)
         return cognitoClient.send(command)
+    }
+    async initiateBiometricChallenge(email) {
+        const params = {
+            ClientId: USER_POOL_CLIENT_ID,
+            AuthFlow: 'CUSTOM_AUTH',
+            AuthParameters: {
+                USERNAME: email, 
+                CHALLENGE_TYPE: 'BIOMETRIC'
+            }
+        }
+        const APP_CLIENT_SECRET = process.env.USER_POOL_CLIENT_SECRET;
+        if (APP_CLIENT_SECRET) {
+            const crypto = require('crypto');
+            const secretHash = crypto.createHmac('sha256', APP_CLIENT_SECRET)
+                .update(email + USER_POOL_CLIENT_ID)
+                .digest('base64');
+            params.AuthParameters.SECRET_HASH = secretHash;
+        }
+        const command = new InitiateAuthCommand(params);
+        return await cognitoClient.send(command);
+    }
+    async respondToBiometricChallenge(email, session, challengeResponse){
+        const params = {
+            ClientId: USER_POOL_CLIENT_ID,
+            ChallengeName: 'CUSTOM_CHALLENGE',
+            Session: session,
+            ChallengeResponses: {
+                USERNAME: email, 
+                ANSWER: challengeResponse
+            }
+        }
+        const command = new RespondToAuthChallengeCommand(param)
+        return cognitoClient.send(command)
+    }
+    async generateTemporaryPassword(email) {
+        const crypto = require('crypto')
+        return crypto.randomBytes(32).toString('hex')
     }
 }
 module.exports = new CognitoService();
