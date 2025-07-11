@@ -100,6 +100,38 @@ functions:
           path: /auth/health
           method: GET
           cors: true
+      - http:
+          path: /auth/biometric/register
+          method: POST
+          cors: true
+      - http:
+          path: /auth/biometric/login
+          method: POST
+          cors: true
+      - http:
+          path: /auth/hbiometric/status
+          method: GET
+          cors: true
+      - http:
+          path: /auth/biometric/delete
+          method: DELETE
+          cors: true
+      - http:
+          path: /auth/biometric/face/register
+          method: POST
+          cors: true
+      - http:
+          path: /auth/biometric/face/login
+          method: POST
+          cors: true
+      - http:
+          path: /auth/biometric/webauthn/register
+          method: POST
+          cors: true
+      - http:
+          path: /auth/biometric/webauthn/login
+          method: POST
+          cors: true
 
   # 👤 User Service - Protected user management endpoints  
   userService:

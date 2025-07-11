@@ -15,4 +15,30 @@ router.post('/change_password', authController.changePassword)
 router.post('/logout_all', authController.logoutAllDevices)
 router.post('/refresh_token', authController.refreshToken)
 
+router.post('/biometric/register', authController.registerBiometric);
+router.post('/biometric/login', authController.loginWithBiometric);
+router.get('/biometric/status', authController.getBiometricStatus);
+router.delete('/biometric/delete', authController.deleteBiometric);
+
+// Specific biometric type routes (optional - for direct access)
+router.post('/biometric/face/register', async (req, res) => {
+    req.body.biometricType = 'face';
+    return authController.registerBiometric(req, res);
+});
+
+router.post('/biometric/face/login', async (req, res) => {
+    req.body.biometricType = 'face';
+    return authController.loginWithBiometric(req, res);
+});
+
+router.post('/biometric/webauthn/register', async (req, res) => {
+    req.body.biometricType = 'webauthn';
+    return authController.registerBiometric(req, res);
+});
+
+router.post('/biometric/webauthn/login', async (req, res) => {
+    req.body.biometricType = 'webauthn';
+    return authController.loginWithBiometric(req, res);
+});
+
 module.exports = router;
