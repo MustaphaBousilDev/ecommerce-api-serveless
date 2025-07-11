@@ -1,6 +1,6 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { RekognitionClient, DetectFacesCommand } = require("@aws-sdk/client-rekognition");
-const { DynamoDBDocumentClient, GetCommand, PutCommand } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } = require("@aws-sdk/lib-dynamodb");
 const { logBusiness } = require("../utils/logger");
 
 class BiometricService {
@@ -147,7 +147,18 @@ class BiometricService {
         const result = await this.dynamoClient.send(command);
         return result.Item;
     }
-    async deleteBiometricData(){}
+    async deleteBiometricData(userId, biometricType) {
+        const params = {
+            TableName: this.biometricTable,
+            Key: {
+                userId,
+                biometricType
+            }
+        };
+
+        const command = new DeleteCommand(params);
+        return await this.dynamoClient.send(command);
+    }
     async calculateSimilarity(){}
     async verifyWebAuthnAssertion(){}
     async getUserBiometrics(){}
