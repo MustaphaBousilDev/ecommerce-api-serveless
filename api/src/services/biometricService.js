@@ -1,6 +1,6 @@
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 const { RekognitionClient, DetectFacesCommand } = require("@aws-sdk/client-rekognition");
-const { DynamoDBDocumentClient } = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBDocumentClient, GetCommand } = require("@aws-sdk/lib-dynamodb");
 const { logBusiness } = require("../utils/logger");
 
 class BiometricService {
@@ -80,11 +80,61 @@ class BiometricService {
             throw error;
         }
     }
-    async verifyFaceData(){}
+    async verifyFaceData(email, imageBase64, requestId){
+        try {
+          logBusiness('face_verification_attempt', null, requestId, {
+            email: email.replace(/(.{2})(.*)(@.*)/, '$1***$3')
+          })
+          //get stored biometric data 
+          const storedData = await this.getBiometricData(email, 'webauthn')
+          if(!storedData){
+            throw new Error('No WebAuthn credential registered for this user')
+          }
+          const verified = this.verifyWebAuthnAssertion(storedData, assertionData);
+          if (verified) {
+            logBusiness('webauthn_verification_success', null, requestId, { 
+                email: email.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+                credentialId: assertionData.id
+            });
+          } else {
+            logSecurity('webauthn_verification_failed', null, requestId, { 
+                email: email.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+                credentialId: assertionData.id
+            });
+          }
+           return {
+                verified,
+                credentialId: assertionData.id,
+                reason: verified ? 'WebAuthn verification successful' : 'WebAuthn verification failed'
+            };
+        } catch(error) {
+            logError(error, requestId, null, { 
+                operation: 'webauthn_verification',
+                email: email.replace(/(.{2})(.*)(@.*)/, '$1***$3')
+            });
+            throw error;
+        }
+    }
     async registerWebAuthnCredential(){}
-    async verifyWebAuthnCredential(){}
+    verifyWebAuthnAssertion(storedData, assertionData) {
+        // Simplified WebAuthn verification
+        // In production, use proper WebAuthn verification libraries
+        return storedData.credentialId === assertionData.id;
+    }
     async storeBiometricData(){}
-    async getBiometricData(){}
+    async getBiometricData(userId, biometricType){
+        const params = {
+            TableName: this.biometricTable,
+            Key: {
+                userId,
+                biometricType
+            }
+        };
+
+        const command = new GetCommand(params);
+        const result = await this.dynamoClient.send(command);
+        return result.Item;
+    }
     async deleteBiometricData(){}
     async calculateSimilarity(){}
     async verifyWebAuthnAssertion(){}
