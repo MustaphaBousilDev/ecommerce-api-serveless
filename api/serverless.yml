@@ -6,21 +6,25 @@ provider:
   region: us-east-1
   stage: ${opt:stage, 'dev'}
 
-  #add logging 
+  # Add logging with explicit log group management
   logs:
     restApi:
       accessLogging: true
+      # Explicitly set log group retention
+      retentionInDays: 14
   
   environment:
     USER_POOL_ID: ${env:USER_POOL_ID}
     USER_POOL_CLIENT_ID: ${env:USER_POOL_CLIENT_ID}
     USER_POOL_CLIENT_SECRET: ${env:USER_POOL_CLIENT_SECRET, ''}
     USERS_TABLE: ${env:USERS_TABLE}
+    BIOMETRIC_TABLE: ${self:service}-biometric-${self:provider.stage}
+    USER_PROFILES_TABLE: ${self:service}-profiles-${self:provider.stage}
     AWS_REGION_NAME: ${env:AWS_REGION_NAME, 'us-east-1'}
     NODE_ENV: ${opt:stage, 'dev'}
 
-  #Security & Peformance
-  timeout: 30
+  # Security & Performance
+  timeout: 29
   memorySize: 512
     
   iam:
@@ -32,22 +36,37 @@ provider:
           Resource: "*"
         - Effect: Allow
           Action:
-            - dynamodb:*
-          Resource: "*"
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource: 
+            - !GetAtt BiometricTable.Arn
+            - !GetAtt UserProfilesTable.Arn
         - Effect: Allow 
           Action: 
             - logs:CreateLogGroup
             - logs:CreateLogStream
             - logs:PutLogEvents
           Resource: "*"
+        - Effect: Allow
+          Action:
+            - rekognition:DetectFaces
+            - rekognition:CompareFaces
+          Resource: "*"
 
 functions:
   # 🔐 Auth Service - All public authentication endpoints
   authService:
     handler: auth-service.handler
-    timeout: 30
+    timeout: 29
     memorySize: 512
-    reservedConcurrency: 50  # Limit concurrent executions
+    # Removed reservedConcurrency for development
+    # reservedConcurrency: 20
+    # Explicit log group configuration
+    logRetentionInDays: 14
     events:
       - http:
           path: /auth/register
@@ -63,7 +82,6 @@ functions:
           path: /auth/refresh_token
           method: POST
           cors: true
-      
       - http:
           path: /auth/logout
           method: POST
@@ -109,7 +127,7 @@ functions:
           method: POST
           cors: true
       - http:
-          path: /auth/hbiometric/status
+          path: /auth/biometric/status
           method: GET
           cors: true
       - http:
@@ -136,8 +154,12 @@ functions:
   # 👤 User Service - Protected user management endpoints  
   userService:
     handler: user-service.handler
-    timeout: 30
+    timeout: 29
     memorySize: 256
+    # Removed reservedConcurrency for development  
+    # reservedConcurrency: 10
+    # Explicit log group configuration
+    logRetentionInDays: 14
     events:
       - http:
           path: /users/profile
@@ -173,9 +195,9 @@ custom:
       validateRequestBody: true 
       validateRequestParameters: true 
 
-    # Throttling (Rate Limiting )
+    # Throttling (Rate Limiting)
     throttle:
-      rateLimit: 1000 #request per second 
+      rateLimit: 1000 # requests per second 
       burstLimit: 2000 # burst requests 
 
     # Binary Media types 
@@ -190,3 +212,63 @@ custom:
       level: INFO 
       dataTrace: true 
       executionLogging: true 
+
+resources:
+  Resources:
+    # Explicit CloudWatch Log Groups with proper naming
+    AuthServiceLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /aws/lambda/${self:service}-${self:provider.stage}-authService
+        RetentionInDays: 14
+
+    UserServiceLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /aws/lambda/${self:service}-${self:provider.stage}-userService
+        RetentionInDays: 14
+
+    BiometricTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-biometric-${self:provider.stage}
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: biometricType
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: biometricType
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+        SSESpecification:
+          SSEEnabled: true
+
+    UserProfilesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-profiles-${self:provider.stage}
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+
+  Outputs:
+    BiometricTableName:
+      Description: "DynamoDB table for biometric data"
+      Value: !Ref BiometricTable
+    UserProfilesTableName:
+      Description: "DynamoDB table for user profiles"
+      Value: !Ref UserProfilesTable
+    ApiGatewayUrl:
+      Description: "API Gateway URL"
+      Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}'
