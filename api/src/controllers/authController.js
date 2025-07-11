@@ -1,6 +1,7 @@
 const { error } = require('winston');
 const authService = require('../services/authService');
 const { logBusiness, logAuth, logError, logSecurity, logPerformance, logInfo } = require('../utils/logger');
+const biometricService = require('../services/biometricService');
 
 
 
@@ -601,6 +602,89 @@ class AuthController {
           requestId
         });
       }
+  }
+  async registerBiometric(req, res) {
+    const requestId = req.requestId;
+    const { email, biometricType, biometricData } = req.body
+    try {
+      if(!email || !biometricData || !biometricType){
+        return res.status(400).json({
+          success: false, 
+          error: 'Email, biometric type, and biometric data are required',
+          requestId
+        })
+      }
+      const supportedTypes = ['face', 'webauthn', 'fingerprint'];
+      if(!supportedTypes.includes(biometricType)){
+        return res.status(400).json({
+          success: false, 
+          error: `Unsupported biometric type. Supported: ${supportedTypes.join(', ')}`,
+          requestId
+        })
+      }
+      logBusiness('biometric_registration_request', null, requestId, { 
+        email: email ? email.replace(/(.{2})(.*)(@.*)/, '$1***$3') : null,
+        biometricType,
+        ip: req.ip || req.connection.remoteAddress,
+        userAgent: req.get('User-Agent')
+      });
+      let result;
+      const startTime = Date.now();
+      switch(biometricType){
+        case 'face':
+          result = await biometricService.registerFaceData(
+            email, 
+            biometricData.image, 
+            requestId
+          )
+          break;
+        case 'webauthn':
+          result = await biometricService.registerWebAuthnCredential(
+            email, 
+            biometricData.credential,
+            requestId
+          )
+          break;
+        default:
+          throw new Error(`${biometricType} registration not implemented yet`)
+        
+      }
+      const duration = Date.now() - startTime;
+      logPerformance('login_operation', duration, requestId, result?.user?.userId, {
+        email: email.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+        hasChallenge: !!result.challenge
+      });
+      return res.status(201).json({
+        success: true,
+        message: `${biometricType} biometric registered successfully`,
+        data: result,
+        requestId,
+        duration: `${duration}ms`
+      });
+
+    } catch(error) {
+        logError(error, requestId, null, {
+          operation: 'biometric_registration',
+          email: email?.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+          biometricType
+        });
+        let statusCode = 500;
+        let message = 'Biometric registration failed';
+        if (error.message.includes('No face detected') || 
+          error.message.includes('Multiple faces') ||
+          error.message.includes('confidence too low')) {
+          statusCode = 400;
+          message = error.message;
+        }
+        res.status(statusCode).json({
+          success: false,
+          error: message,
+          requestId
+        });
+    }
+    
+    
+    
   }
 }
 
