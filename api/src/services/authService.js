@@ -194,6 +194,55 @@ class AuthService {
         throw error;
       }
     }
+    generateBiometricSessionPassword(email) {
+      // Generate a unique session identifier for biometric auth
+      const crypto = require('crypto');
+      const timestamp = Date.now().toString();
+      const sessionData = email + timestamp + process.env.USER_POOL_CLIENT_SECRET;
+      return crypto.createHash('sha256').update(sessionData).digest('hex');
+    }
+    async loginUserForBiometric(email) {
+      try {
+        // This is for users who have completed biometric verification
+        // We need to generate tokens without password validation
+        
+        // Option 1: If user has a stored session or temp password
+        const cleanEmail = email.trim().toLowerCase();
+        
+        // Generate a temporary secure password for this biometric session
+        const tempPassword = this.generateBiometricSessionPassword(cleanEmail);
+        
+        // Use admin authentication since biometric is already verified
+        const authResult = await cognitoService.adminAuthenticateUser(cleanEmail);
+        
+        // Process tokens similar to regular login
+        if (authResult.ChallengeName) {
+          return {
+            challenge: authResult.ChallengeName,
+            session: authResult.Session,
+            challengeParameters: authResult.ChallengeParameters
+          };
+        }
+        
+        const tokens = authResult.AuthenticationResult;
+        const userInfo = this._extractUserInfo(tokens.IdToken);
+        
+        return {
+          user: userInfo,
+          tokens: {
+            accessToken: tokens.AccessToken,
+            idToken: tokens.IdToken,
+            refreshToken: tokens.RefreshToken,
+            tokenType: 'Bearer',
+            expiresIn: tokens.ExpiresIn,
+            expiresAt: new Date(Date.now() + (tokens.ExpiresIn * 1000)).toISOString()
+          }
+        };
+        
+      } catch (error) {
+        throw error;
+      }
+    }
     _validateInput(email, password, name) {
         if (!email || !password || !name) {
         const error = new Error('Email, password, and name are required');

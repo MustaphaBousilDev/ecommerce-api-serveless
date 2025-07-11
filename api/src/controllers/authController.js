@@ -686,6 +686,219 @@ class AuthController {
     
     
   }
+  async loginWithBiometric(req, res){
+    const {email, biometricType, biometricData} = req.body
+    const requestedId = req.requestId
+    try {
+      if(!email || !biometricData || !biometricType){
+        return res.status(400).json({
+          success: false, 
+          error: 'Email, biometric type, and biometric data are required',
+          requestedId
+        })
+      }
+      logBusiness('biometric_login_request', null, requestedId, {
+        email: email.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+        biometricType,
+        ip: req.ip
+      })
+      let verificationResult;
+      switch(biometricType) {
+        case 'face': 
+          verificationResult = await biometricService.verifyFaceData(
+            email, biometricData.image, 
+            requestedId
+          )
+          break;
+        case 'webauthn': 
+          verificationResult = await biometricService.verifyWebAuthnCredential(
+            email, 
+            biometricData.assertion, 
+            requestedId
+          )
+          break;
+        default:
+          throw new Error(`${biometricType} verification not implemented yet`)
+      }
+      if(!verificationResult.verified){
+        logSecurity('biometric_login_failed', null, requestedId, {
+          email: email.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+          biometricType,
+          reason: verificationResult.reason,
+          confidence: verificationResult.confidence
+        })
+        return res.status(401).json({
+          success: false, 
+          error: 'Biometric verification failed',
+          reason: verificationResult.reason,
+          confidence: verificationResult.confidence,
+          requestedId
+        })
+      }
+      //generate cognito token for verefied user 
+      const authResult = await this.generateTokensForBiometricUser(email)
+      logAuth('biometric_login_success', authResult.user.userId, email, requestedId, true);
+      logBusiness('biometric_login_completed', authResult.user.userId, requestedId, {
+        email: email.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+        biometricType,
+        confidence: verificationResult.confidence
+      });
+      res.status(200).json({
+        success: true,
+        message: 'Biometric login successful',
+        data: {
+            user: authResult.user,
+            tokens: authResult.tokens,
+            biometric: {
+                type: biometricType,
+                confidence: verificationResult.confidence,
+                verified: true
+            }
+        },
+        requestedId
+      });
+    } catch(error) {
+        logError(error, requestedId, null, {
+          operation: 'biometric_login',
+          email: email?.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+          biometricType
+        });
+
+        let statusCode = 500;
+        let message = 'Biometric login failed';
+        if (error.message.includes('No face data registered') ||
+          error.message.includes('No WebAuthn credential registered')) {
+          statusCode = 404;
+          message = 'No biometric data registered for this user';
+        }
+
+        res.status(statusCode).json({
+            success: false,
+            error: message,
+            requestedId
+        });
+    }
+  }
+  async generateTokensForBiometricUser(email) {
+    try {
+        const result = await authService.loginUserForBiometric(email);
+        return result;
+        
+    } catch (error) {
+        // Option 2: Admin authentication (requires admin privileges)
+        const adminResult = await cognitoService.adminAuthenticateUser(email);
+        return this.processCognitoTokens(adminResult);
+    }
+  }
+  async getBiometricStatus(req, res) {
+    const { email } = req.query;
+    const requestId = req.requestId;
+
+    try {
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                error: 'Email is required',
+                requestId
+            });
+        }
+
+        const biometrics = await biometricService.getUserBiometrics(email);
+        
+        const status = {
+            hasAny: biometrics.length > 0,
+            types: biometrics.map(b => ({
+                type: b.biometricType,
+                registeredAt: b.createdAt,
+                lastUpdated: b.updatedAt
+            }))
+        };
+
+        res.status(200).json({
+            success: true,
+            data: status,
+            requestId
+        });
+
+    } catch (error) {
+        logError(error, requestId, null, {
+            operation: 'get_biometric_status',
+            email: email?.replace(/(.{2})(.*)(@.*)/, '$1***$3')
+        });
+
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get biometric status',
+            requestId
+        });
+    }
+  }
+  async deleteBiometric(req, res) {
+    const { email, biometricType } = req.body;
+    const requestId = req.requestId;
+
+    try {
+        if (!email || !biometricType) {
+            return res.status(400).json({
+                success: false,
+                error: 'Email and biometric type are required',
+                requestId
+            });
+        }
+
+        await biometricService.deleteBiometricData(email, biometricType);
+
+        logBusiness('biometric_deleted', null, requestId, {
+            email: email.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+            biometricType
+        });
+
+        res.status(200).json({
+            success: true,
+            message: `${biometricType} biometric data deleted successfully`,
+            requestId
+        });
+
+    } catch (error) {
+        logError(error, requestId, null, {
+            operation: 'delete_biometric',
+            email: email?.replace(/(.{2})(.*)(@.*)/, '$1***$3'),
+            biometricType
+        });
+
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete biometric data',
+            requestId
+        });
+    }
+  }
+  processCognitoTokens(cognitoResult) {
+    const tokens = cognitoResult.AuthenticationResult;
+    const userInfo = this.extractUserInfo(tokens.IdToken);
+    
+    return {
+        user: userInfo,
+        tokens: {
+            accessToken: tokens.AccessToken,
+            idToken: tokens.IdToken,
+            refreshToken: tokens.RefreshToken,
+            tokenType: 'Bearer',
+            expiresIn: tokens.ExpiresIn,
+            expiresAt: new Date(Date.now() + (tokens.ExpiresIn * 1000)).toISOString()
+        }
+    };
+  }
+  extractUserInfo(idToken) {
+    const payload = JSON.parse(Buffer.from(idToken.split('.')[1], 'base64').toString());
+    return {
+        userId: payload.sub,
+        email: payload.email,
+        name: payload.name || payload.given_name || 'User',
+        username: payload.preferred_username || payload.email,
+        emailVerified: payload.email_verified
+    };
+  }
 }
 
 module.exports = new AuthController();

@@ -8,6 +8,7 @@ const {
     ConfirmForgotPasswordCommand, 
     ChangePasswordCommand, 
     RespondToAuthChallengeCommand,
+    AdminInitiateAuthCommand,
 } = require("@aws-sdk/client-cognito-identity-provider");
 const { cognitoClient, USER_POOL_CLIENT_ID } = require('../config/aws');
 const { param } = require("express-validator");
@@ -183,6 +184,62 @@ class CognitoService {
     async generateTemporaryPassword(email) {
         const crypto = require('crypto')
         return crypto.randomBytes(32).toString('hex')
+    }
+    async adminAuthenticateUser(email) {
+    try {
+        // For biometric-authenticated users, we use admin authentication
+        // This requires admin privileges but bypasses password validation
+        
+        const params = {
+        UserPoolId: process.env.USER_POOL_ID,
+        ClientId: USER_POOL_CLIENT_ID,
+        AuthFlow: 'ADMIN_USER_PASSWORD_AUTH',
+        AuthParameters: {
+            USERNAME: email,
+            PASSWORD: await this.getBiometricTempPassword(email)
+        }
+        };
+
+        // Add SECRET_HASH if needed
+        const APP_CLIENT_SECRET = process.env.USER_POOL_CLIENT_SECRET;
+        if (APP_CLIENT_SECRET) {
+        const crypto = require('crypto');
+        const secretHash = crypto.createHmac('sha256', APP_CLIENT_SECRET)
+            .update(email + USER_POOL_CLIENT_ID)
+            .digest('base64');
+        params.AuthParameters.SECRET_HASH = secretHash;
+        }
+
+        const command = new AdminInitiateAuthCommand(params);
+        return await cognitoClient.send(command);
+        
+    } catch (error) {
+        // If admin auth fails, try alternative approach
+        return await this.createBiometricSession(email);
+    }
+    }
+    async getBiometricTempPassword(email) {
+        const crypto = require('crypto');
+        const seed = email + process.env.USER_POOL_CLIENT_SECRET + 'biometric';
+        return crypto.createHash('sha256').update(seed).digest('hex').substring(0, 16);
+    }
+    async createBiometricSession(email) {
+        try {
+            const params = {
+            ClientId: USER_POOL_CLIENT_ID,
+            AuthFlow: 'CUSTOM_AUTH',
+            AuthParameters: {
+                USERNAME: email,
+                CHALLENGE_TYPE: 'BIOMETRIC_VERIFIED'
+            }
+            };
+
+            const command = new InitiateAuthCommand(params);
+            return await cognitoClient.send(command);
+            
+        } catch (error) {
+            throw new Error(`Failed to create biometric session for ${email}: ${error.message}`);
+        }
     }
 }
 module.exports = new CognitoService();
